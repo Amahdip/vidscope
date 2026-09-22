@@ -2,6 +2,7 @@
   "name": "vidscope",
   "version": "0.1.0",
   "description": "See the bytes inside video files: an interactive anatomy viewer for MP4/MOV (ISO-BMFF), Matroska/WebM, MPEG-TS, AVI and FLV.",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "vidscope": "bin/vidscope.js"

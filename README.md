@@ -138,3 +138,7 @@ node scripts/dump.mjs samples/h264-aac.mp4 --fields --tracks --insights --sample
 
 prints the tree, fields, tracks, insights and a sample's NAL units without the UI.
 Adding a container format is described in [docs/FORMATS.md](docs/FORMATS.md).
+
+## License
+
+[MIT](LICENSE)
