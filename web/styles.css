@@ -397,6 +397,8 @@ code, .mono { font-family: var(--mono); }
   color: var(--text-2);
 }
 .btn:hover { color: var(--text); border-color: var(--text-3); }
+.btn svg { flex: none; }
+.btn.copy { display: inline-flex; align-items: center; gap: 5px; }
 .btn:disabled { opacity: 0.4; cursor: default; }
 .hexbar .range { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hexbar .hint { margin-left: auto; color: var(--text-3); white-space: nowrap; }
