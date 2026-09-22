@@ -26,11 +26,18 @@ media frame it belongs to, and explains in plain words what it is for.
   variable frame rate, HDR, encryption, the encoder and its settings, metadata, chapters, and
   integrity problems. Per format: Matroska Cues, SeekHead and CRC-32s; TS timing (PCR,
   PAT/PMT repetition, continuity counters); AVI indexes; FLV metadata against the tags.
+- **Encoding explained**, in every container: the x264/x265 settings stored in the stream, each
+  option explained (what it controls, what this file's value means, the trade-off, how to set it
+  with FFmpeg); the rate control in one sentence (CRF, capped CRF, ABR, CBR, two-pass, constant
+  QP); the preset the options match, and an FFmpeg command that reproduces the encode; a check of
+  each video stream against its codec level (H.264, HEVC, AV1 and VP9 limits on picture size, frame
+  or sample rate, bitrate, buffer and reference frames, plus the lowest level it fits); bits per
+  pixel. Every figure explains itself on hover, and Beginner mode adds plain-language notes.
 - **Tracks** with codec strings (`avc1.64001E`, `hvc1.2.4.L63.90`, `av01.0.01M.08`, `mp4a.40.2`...), a
   frame-size chart with key frames, and a frame list that jumps to each frame's bytes.
-- **Glossary** of concepts and of the open format's structures (every registered 4CC for
-  MP4, the Matroska elements, TS packets and tables, RIFF chunks, FLV tags), marking
-  what is present in the open file.
+- **Glossary** of concepts (including encoding: CRF, VBV, QP, profiles, levels, presets...)
+  and of the open format's structures (every registered 4CC for MP4, the Matroska elements,
+  TS packets and tables, RIFF chunks, FLV tags), marking what is present in the open file.
 - **Beginner / Detailed / Raw** levels of explanation, dark and light themes.
 
 Everything is parsed in the browser. The server only hands out byte ranges, so opening a
@@ -106,7 +113,8 @@ AC-3/E-AC-3, FLAC, ALAC, MP3.
 ```
 bin/vidscope.js          local server: static UI + byte ranges of the files you pass
 web/core/                byte sources with a block cache, FieldReader, the node tree, Doc
-web/codecs/              codec configurations and bitstream headers (H.264, HEVC, AV1, VP9, audio...)
+web/codecs/              codec configurations and bitstream headers (H.264, HEVC, AV1, VP9, audio...),
+                         encoder settings (x264/x265) and codec level limits
 web/formats/<format>/    one directory per container; see docs/FORMATS.md
 web/ui/                  map, tree, hex view, inspector, insights, tracks, glossary
 scripts/dump.mjs         print what Vidscope sees, from the command line

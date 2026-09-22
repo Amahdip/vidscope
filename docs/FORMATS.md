@@ -186,6 +186,23 @@ call (the MP4 reference decodes at most 64 frames and skips frames over 4 MiB).
 Groups used so far: `Overview`, `Layout`, `Tracks`, `Encoding`, `Timing`, `Integrity`, `Metadata`.
 `cmd` is an optional shell command that fixes or inspects the issue (e.g. an FFmpeg command line).
 
+Optional fields for richer findings: `tip` (hover text of the title), `beginner` (a fuller
+explanation shown only in Beginner mode), `list` (short notes), facts as `[k, v, tip]`,
+`cmdParts: [[text, tip]]` (the parts of `cmd`, each explained on hover), `offsetLabel` (the text
+of the `offset` button), and `rows`: `[{ group?, k, v, limit?, text?, note?, status?, ktip?, vtip?,
+ltip?, more?: [[label, text, code?]], advanced? }]`, one line per setting or limit, grouped under
+collapsible headings (`groupTips`, `closed`), expandable when `more` is given. `status` is
+`good`/`warn`/`bad`; `note` is shown in Beginner mode; `advanced` rows are hidden in Beginner mode.
+
+The File insights tab adds findings every format shares, from `web/core/encoding.js`: the x264/x265
+settings of the first video frame (or of the codec configuration record) explained, the rate
+control, an FFmpeg command that reproduces the encode, the codec level check and bits per pixel.
+They need nothing from the format beyond what its tracks already carry: `t.sps` (or a
+`codecString` with profile and level), props `coded size` and `frame rate` (or `t.fps`),
+`t.bitrate`, `t.samples` with `sizes`, `dts` and `timescale` in decoding order, and `detailAt()`
+for the units of the first frame. The configuration record's SEI is found in the fields of
+`t.entryNode`, `t.cpNode` or `t.node`. Keep format insights to what is specific to the container.
+
 ## Glossary
 
 `glossary()` returns `[{ term, name, desc, more?, cat?, url? }]`: the elements/structures of the
