@@ -189,6 +189,9 @@ code, .mono { font-family: var(--mono); }
   min-height: 48px;
   background: var(--bg-1);
   flex-wrap: nowrap;
+  /* A grid item: without this its content (a long file name and summary) sets its minimum width
+     and pushes the page wider than the window instead of shortening the summary with an ellipsis. */
+  min-width: 0;
 }
 .top-right { flex: none; }
 @media (max-width: 1440px) {
@@ -929,6 +932,45 @@ canvas.pxzoom { width: 100%; aspect-ratio: 16 / 9; display: block; margin-top: 6
 .pxmet .bad { color: var(--bad); font-family: var(--sans); }
 .pxmet .sep { color: var(--text-3); }
 .pxmet div.dim { margin-top: 2px; font-size: 11px; }
+
+/* ------------------------------------------------------------------ insights: explained rows (encoding) */
+
+.icard .ilist { margin: 6px 0 0 24px; padding-left: 16px; color: var(--text-2); font-size: 12px; }
+.icard .ilist li { margin: 3px 0; }
+.icard .irows { margin: 8px 0 0 24px; }
+.icard .rgroup { margin: 2px 0 6px; }
+.icard .rgroup > summary { list-style: none; cursor: pointer; display: flex; gap: 6px; align-items: baseline; padding: 4px 0 3px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3); }
+.icard .rgroup > summary::-webkit-details-marker { display: none; }
+.icard .rgroup > summary::before { content: "▸"; font-size: 9px; width: 9px; }
+.icard .rgroup[open] > summary::before { content: "▾"; }
+.icard .rgroup > summary:hover { color: var(--text-2); }
+.icard .rgroup .rc { margin-left: auto; letter-spacing: 0; }
+.icard .irow { border-top: 1px solid var(--line); }
+.icard .irow > .rh { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; padding: 4px; margin: 0 -4px; border-radius: 4px; font-family: var(--mono); font-size: 12px; min-width: 0; }
+.icard details.irow > summary { list-style: none; cursor: pointer; }
+.icard details.irow > summary::-webkit-details-marker { display: none; }
+.icard details.irow > summary:hover { background: var(--hover-bg); }
+.icard details.irow[open] > summary { background: var(--in-bg); }
+.icard .irow .rs { width: 12px; flex: none; text-align: center; font-weight: 600; }
+.icard .irow .rs.good { color: var(--good); }
+.icard .irow .rs.warn { color: var(--warn); }
+.icard .irow .rs.bad { color: var(--bad); }
+.icard .irow .rs.info { color: var(--info); }
+.icard .irow .rk { color: var(--c-type); overflow-wrap: anywhere; }
+.icard .irow .rv { color: var(--text); overflow-wrap: anywhere; }
+.icard .irow .rl { color: var(--text-3); white-space: nowrap; }
+.icard .irow .rvl { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; padding-left: 22px; }
+.icard .irow .rn { flex-basis: 100%; color: var(--text-2); font-family: var(--sans); font-size: 12px; }
+.icard .irow .rn.ind { padding-left: 22px; }
+.icard .irow .rt { flex: 1 1 8em; min-width: 0; text-align: right; color: var(--text-3); font-family: var(--sans); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.icard .irow .rb { padding: 2px 4px 8px; color: var(--text-2); font-size: 12px; }
+.icard .irow .rb p { margin: 5px 0; }
+.icard .irow .rb b { color: var(--text); font-weight: 600; }
+.icard .irow .rb code { font-family: var(--mono); font-size: 11.5px; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 4px; padding: 0 5px; overflow-wrap: anywhere; }
+.icard pre.code .cp { border-radius: 3px; }
+.icard pre.code .cp:hover { background: var(--accent-bg); color: var(--text); }
+.icard [data-tip] { cursor: help; }
+.icard .acts [data-tip], .icard summary [data-tip] { cursor: inherit; }
 
 /* ------------------------------------------------------------------ commands */
 

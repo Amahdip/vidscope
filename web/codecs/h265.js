@@ -189,8 +189,8 @@ function profileTierLevel(r, maxSubLayersMinus1, s) {
     s.compat_flags = r.bits(32, 'general_profile_compatibility_flags', { display: (v) => `0x${v.toString(16).padStart(8, '0')}` });
     s.progressive = r.flag('general_progressive_source_flag');
     s.interlaced = r.flag('general_interlaced_source_flag');
-    r.flag('general_non_packed_constraint_flag');
-    r.flag('general_frame_only_constraint_flag');
+    s.non_packed = r.flag('general_non_packed_constraint_flag');
+    s.frame_only = r.flag('general_frame_only_constraint_flag');
     r.bits(43, 'general_constraint_flags', { desc: 'Profile-specific constraint flags (e.g. max_10bit, max_422chroma for RExt).' });
     r.flag('general_inbld_flag');
     s.level_idc = r.u8('general_level_idc', { key: true, display: (v) => `${v} → level ${levelName(v)}` });
@@ -300,7 +300,7 @@ export function parseSps(r) {
   s.log2_max_poc_lsb = r.ue('log2_max_pic_order_cnt_lsb_minus4', { display: (v) => `${v} → ${v + 4} bits` }) + 4;
   const ordering = r.flag('sps_sub_layer_ordering_info_present_flag');
   for (let i = ordering ? 0 : s.max_sub_layers_minus1; i <= s.max_sub_layers_minus1; i++) {
-    r.ue(`sps_max_dec_pic_buffering_minus1[${i}]`);
+    s.max_dec_pic_buffering = r.ue(`sps_max_dec_pic_buffering_minus1[${i}]`, { desc: 'Pictures the decoder must be able to hold (minus 1), for reference and reordering. The level limits it.' }) + 1;
     s.max_num_reorder = r.ue(`sps_max_num_reorder_pics[${i}]`, { desc: 'How many pictures may precede another in decoding order but follow it in display order.' });
     r.ue(`sps_max_latency_increase_plus1[${i}]`);
   }

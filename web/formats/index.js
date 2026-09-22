@@ -6,10 +6,11 @@ import matroska from './matroska/index.js';
 import mpegts from './mpegts/index.js';
 import riff from './riff/index.js';
 import flv from './flv/index.js';
+import es from './es/index.js';
 import raw from './raw/index.js';
 
 // raw matches anything with the lowest score, so unknown files still open in the hex view.
-export const FORMATS = [isobmff, matroska, mpegts, riff, flv, raw];
+export const FORMATS = [isobmff, matroska, mpegts, riff, flv, es, raw];
 
 /** Detect the format of a source and parse it into a Doc. */
 export async function openDocument(rawSource, { onProgress } = {}) {
