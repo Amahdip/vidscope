@@ -316,7 +316,8 @@ async function avcUnit(S, source, win, pos, q, offset) {
 // ------------------------------------------------------------ MPEG-1/2 video
 
 function mpeg2Unit(S, win, q, offset) {
-  if (q + 3 >= win.length) return;
+  // win[q] is the start code's value; the header's fields start at win[q + 1].
+  if (q + 7 >= win.length) return;
   const code = win[q];
   count(S, code, offset);
   // A picture's data runs until the next sequence header, GOP header or picture header.
@@ -325,13 +326,16 @@ function mpeg2Unit(S, win, q, offset) {
   const a = S.au;
   const k = S.cur;
   if (code === 0xb3) {
-    const rate = win[q + 3] & 15;
-    const bitRate = ((win[q + 4] << 10) | (win[q + 5] << 2) | (win[q + 6] >> 6)) * 400;
-    S.seq ??= { width: (win[q] << 4) | (win[q + 1] >> 4), height: ((win[q + 1] & 15) << 8) | win[q + 2], aspect: win[q + 3] >> 4, rate, bitRate };
+    // horizontal_size (12 bits), vertical_size (12), aspect_ratio_information (4),
+    // frame_rate_code (4), bit_rate_value (18, in units of 400 bit/s)
+    const rate = win[q + 4] & 15;
+    const bitRate = ((win[q + 5] << 10) | (win[q + 6] << 2) | (win[q + 7] >> 6)) * 400;
+    S.seq ??= { width: (win[q + 1] << 4) | (win[q + 2] >> 4), height: ((win[q + 2] & 15) << 8) | win[q + 3], aspect: win[q + 4] >> 4, rate, bitRate };
     S.pendingParams = true;
   } else if (code === 0xb8) {
     S.gop++;
-    S.gopClosed = (win[q + 3] >> 6) & 1;
+    // time_code (25 bits), then closed_gop
+    S.gopClosed = (win[q + 4] >> 6) & 1;
     S.pendingParams = true;
   } else if (code === 0x00) {
     S.seenVcl = true;

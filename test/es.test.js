@@ -37,6 +37,15 @@ for (const [name, codec] of STREAMS) {
       assert.equal(!!s.key[i], p.flags.includes('K'), `frame ${i + 1} key flag`);
     });
     // FFmpeg's decoder outputs frames in display order; ours comes from the POC / temporal reference.
+    // Picture size and frame rate, from the parameter sets or the sequence header.
+    const st = probe(name, ['-show_entries', 'stream=width,height,r_frame_rate']).streams[0];
+    const size = doc.tracks[0].props.find(([k]) => k === 'coded size')?.[1];
+    assert.equal(size, `${st.width}×${st.height}`, 'coded size');
+    // For MPEG-2, FFmpeg's r_frame_rate is the sequence header's frame_rate_code. For H.264 it is
+    // the field rate and avg_frame_rate is only the raw demuxer's default, so check the 25 fps
+    // the samples were made at (also Vidscope's default for the stream without VUI timing).
+    const [num, den] = st.r_frame_rate.split('/').map(Number);
+    assert.ok(Math.abs(doc.tracks[0].fps - (codec === 'mpeg2v' ? num / den : 25)) < 1e-6, `frame rate ${doc.tracks[0].fps} (FFmpeg r_frame_rate ${st.r_frame_rate})`);
     const frames = probe(name, ['-show_frames', '-show_entries', 'frame=pkt_pos,pict_type']).frames;
     const byOffset = new Map(Array.from(s.offsets, (o, i) => [o, i]));
     const order = Array.from({ length: s.count }, (_, i) => i).sort((a, b) => doc.scan.rank[a] - doc.scan.rank[b]);
