@@ -7,6 +7,12 @@
   "bin": {
     "vidscope": "bin/vidscope.js"
   },
+  "files": [
+    "bin",
+    "web",
+    "scripts",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "node bin/vidscope.js samples",
     "samples": "sh scripts/make-samples.sh",

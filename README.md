@@ -4,6 +4,29 @@ See the bytes inside video files. Vidscope maps every byte of a container
 (MP4/MOV, Matroska/WebM, MPEG-TS, AVI/WAV, FLV) to the box, element, field, table entry or
 media frame it belongs to, and explains in plain words what it is for.
 
+## Quick start
+
+You need [Node.js](https://nodejs.org) 18 or newer. Nothing else gets installed.
+
+```bash
+npx github:Amahdip/vidscope ~/Movies
+```
+
+This downloads Vidscope, starts a small server on your computer and opens
+http://127.0.0.1:8766 in your browser, listing the videos in `~/Movies`. Give it a file or a
+folder (`-r` includes sub-folders), or no path at all and drop files onto the page.
+
+To keep a copy or change the code:
+
+```bash
+git clone https://github.com/Amahdip/vidscope.git
+cd vidscope
+node bin/vidscope.js ~/Movies
+```
+
+No video at hand? `npm run samples` makes about 50 short test files in every format with
+FFmpeg, and `npm start` opens them.
+
 - **To-scale map** of the file and of any box you zoom into, plus one card per part so
   even 8-byte boxes are clickable.
 - **Structure tree** of every box, element, chunk, packet or tag, with track labels and
@@ -45,33 +68,24 @@ Everything is parsed in the browser. The server only hands out byte ranges, so o
 multi-gigabyte file reads just its headers and index (usually a few megabytes), and the hex
 view reads only what is on screen. Dropped files are never uploaded.
 
-## Run it
+## Running it
 
-Requires Node.js 18 or newer. No dependencies and no build step.
+There are no dependencies and no build step: `bin/vidscope.js` serves the `web/` folder and
+the byte ranges of the files you name.
 
 ```bash
 node bin/vidscope.js ~/Movies/clip.mp4 ~/Videos
 ```
 
-This serves the UI at http://127.0.0.1:8766 and opens it. Folders are scanned for media
-files (`-r` to recurse). With no arguments you can drop files onto the page, or open a
-path from the file menu. `npm link` installs a `vidscope` command.
-
-To try it on generated test files (needs FFmpeg):
-
-```bash
-npm run samples
-```
-
-```bash
-npm start
-```
-
-`npm run samples` writes about 50 short files covering every format and most codecs to
-`samples/` (the tests use them too).
+Folders are scanned for media files (`-r` to recurse). With no arguments you can drop files
+onto the page, or open a path from the file menu. In a clone, `npm link` installs a
+`vidscope` command.
 
 Options: `--port <n>` (default 8766; the next free port is used if taken), `--host <addr>`
 (default 127.0.0.1), `--no-open`, `-r/--recursive`.
+
+`npm run samples` writes about 50 short files covering every format and most codecs to
+`samples/` (the tests use them too); `npm start` serves that folder.
 
 The server binds to localhost, answers only requests addressed to localhost (a DNS
 rebinding guard), and only serves the files you named.
