@@ -6,6 +6,7 @@ import { brandInfo } from './registry.js';
 import { ILST_NAMES } from './meta.js';
 import { DRM_SYSTEMS } from './meta.js';
 import { TRANSFER_CHARACTERISTICS } from '../../codecs/color.js';
+import { parseX26x } from '../../codecs/encoders.js';
 
 const WRITERS = [
   [/^VideoHandler$|^SoundHandler$/, 'FFmpeg / libavformat'],
@@ -38,34 +39,6 @@ async function encoderSei(doc) {
     }
   }
   return null;
-}
-
-function parseX26x(text) {
-  const facts = [];
-  const head = text.split(' - ')[0];
-  const core = /core (\d+)(?: r(\d+))?/.exec(text);
-  facts.push(['encoder', core ? `x264 core ${core[1]}${core[2] ? ` r${core[2]}` : ''}` : head.trim()]);
-  const opts = new Map();
-  const m = /options: (.*)$/s.exec(text);
-  if (m) {
-    for (const kv of m[1].trim().split(/\s+/)) {
-      const i = kv.indexOf('=');
-      if (i > 0) opts.set(kv.slice(0, i), kv.slice(i + 1));
-      else opts.set(kv, '1');
-    }
-  }
-  const rc = opts.get('rc');
-  if (rc === 'crf' || opts.has('crf')) facts.push(['rate control', `CRF ${opts.get('crf')} (constant quality)`]);
-  else if (rc === 'abr' || rc === 'cbr' || opts.has('bitrate')) facts.push(['rate control', `${(rc ?? 'abr').toUpperCase()} ${opts.get('bitrate') ?? ''} kb/s`]);
-  else if (rc) facts.push(['rate control', rc]);
-  if (opts.has('bframes')) facts.push(['B-frames', opts.get('bframes')]);
-  if (opts.has('ref')) facts.push(['reference frames', opts.get('ref')]);
-  if (opts.has('keyint')) facts.push(['max keyframe interval', `${opts.get('keyint')} frames`]);
-  if (opts.has('open_gop') || opts.has('open-gop')) facts.push(['open GOP', opts.get('open_gop') ?? opts.get('open-gop')]);
-  if (opts.has('cabac')) facts.push(['entropy coder', opts.get('cabac') === '1' ? 'CABAC' : 'CAVLC']);
-  if (opts.has('subme') || opts.has('me')) facts.push(['motion search', `${opts.get('me') ?? ''}${opts.has('subme') ? `, subme ${opts.get('subme')}` : ''}`]);
-  if (opts.has('threads')) facts.push(['threads', opts.get('threads')]);
-  return { facts, options: opts.size };
 }
 
 function interleaving(doc) {
@@ -161,7 +134,7 @@ export async function insights(doc) {
   }
   if (writerFacts.length) {
     add('info', 'Encoding', sei ? `Encoded with ${writerFacts.find(([k]) => k === 'encoder')?.[1] ?? 'x264/x265'}` : 'Who wrote this file', sei
-      ? 'x264 and x265 store their exact version and every option they were run with in an SEI message in the first frame. Vidscope decoded it.'
+      ? 'x264 and x265 store their exact version and every option they were run with in an SEI message in the first frame. Vidscope decoded it; the settings card below explains each option.'
       : 'Clues left by the software that wrote the file.', { facts: writerFacts, offset: sei ? sei.unit.offset : undefined });
   }
 
