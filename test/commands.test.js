@@ -324,6 +324,13 @@ test('commands: file paths from the server, ~ and dropped files', () => {
   assert.equal(out, path.join(os.homedir(), 'Movies/my clip.mp4'));
 });
 
+test('commands: times for -ss round down, so that the frame itself is not skipped', () => {
+  assert.equal(fmtClock(4.12), '00:00:04.120');
+  assert.equal(fmtClock(1001 / 30000), '00:00:00.033', 'a 29.97 fps frame at 33.37 ms: 0.034 would skip it');
+  assert.equal(fmtClock(3723.5), '01:02:03.500');
+  assert.equal(fmtClock(-0.02), '00:00:00.000');
+});
+
 test('commands: filter graph escaping follows the FFmpeg documentation', () => {
   // The example of the "Notes on filtergraph escaping" section, second level.
   assert.equal(filterValue("this is a 'string': may contain one, or more, special characters"),

@@ -567,7 +567,8 @@ function spec(c, s, { input: inputNo = null, kind = 'v' } = {}) {
     return tk(`${pre}${kind}:0`, `${SPEC_BASE} This file has no ${TYPE_NAME[kind]} track that FFmpeg can see, so this command does not apply to it.`, { ph: true });
   }
   const inTip = inputNo === null ? '' : `${inputNo}: is the input (the first -i is 0), then `;
-  return tk(`${pre}${s.spec}`, `${inTip}${SPEC_BASE} ${s.spec} is ${s.label} (${specWhy(c, s)}); FFmpeg counts it as stream ${s.index} of the file.`, { ctx: true });
+  const pid = c.format === 'mpegts' && Number.isInteger(s.track.pid) ? ` In an MPEG-TS a stream can also be named by its PID: #0x${s.track.pid.toString(16)}.` : '';
+  return tk(`${pre}${s.spec}`, `${inTip}${SPEC_BASE} ${s.spec} is ${s.label} (${specWhy(c, s)}); FFmpeg counts it as stream ${s.index} of the file.${pid}`, { ctx: true });
 }
 
 /**
