@@ -217,8 +217,9 @@ export class FramesView {
       h('span', { class: 'legend', 'data-tip': 'Key frame starting a closed GOP (IDR / key frame): decoding can start here cleanly' }, h('span', { class: 'mk' }, '▼'), 'key frame'),
       h('span', { class: 'legend', 'data-tip': 'Key frame starting an open GOP (CRA / recovery point): decoding can start here, but a few frames after it are skipped' }, h('span', { class: 'mk' }, '▽'), 'open GOP'),
       h('span', { class: 'legend', 'data-tip': 'This packet also carries a hidden frame (VP9/AV1 alternate reference)' }, h('span', { class: 'mk' }, '○'), 'hidden frame'));
+    this.capTop = h('span', null, 'Frame sizes');
     body.append(h('div', { class: 'fchart' },
-      h('div', { class: 'cap' }, h('span', null, 'Frame sizes'), h('span', { class: 'hint' }, 'scroll to zoom · drag to move · double-click to see everything · click a frame to select it')),
+      h('div', { class: 'cap' }, this.capTop, h('span', { class: 'hint' }, 'scroll to zoom · drag to move · double-click to see everything · click a frame to select it')),
       legend, this.cvMain, h('div', { class: 'cap' }, this.capL, this.capM, this.capR), this.cvOver));
 
     this.gopEl = h('div', { class: 'fgop' });
@@ -652,11 +653,7 @@ export class FramesView {
     g.fillRect(0, top, w, 1);
     g.fillStyle = col('--viz-base');
     g.fillRect(0, base, w, 1);
-    g.fillStyle = col('--text-3');
-    g.font = `11px ${col('--mono') || 'monospace'}`;
-    g.textBaseline = 'bottom';
-    g.textAlign = 'right';
-    g.fillText(`tallest bar ${humanSize(max)}`, w - 2, top - 5);
+    this.capTop.textContent = `Frame sizes · tallest bar ${humanSize(max)}`;
     const selK = this.selI >= 0 ? this.posOf(this.selI) : -1;
     if (perPx <= 1 / 3) {
       // One bar per frame.

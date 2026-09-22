@@ -33,6 +33,10 @@ media frame it belongs to, and explains in plain words what it is for.
   report, for H.264, HEVC, AV1, VP9, VP8, MPEG-2, MPEG-4 Part 2, Sorenson and VP6 in every
   container. Tooltips and short notes explain GOPs, open and closed GOPs, B-pyramids and why the
   key frame interval matters for streaming.
+- **Bitrate view**: bits per second of every track over time (stacked), average and peaks, bits
+  per pixel, a guess at the rate control (constant, capped or quality-based), and a decoder
+  buffer (VBV) check that shows whether a viewer receiving the stream at a given `-maxrate` and
+  `-bufsize` would keep up, and which frame would stall.
 - **Tracks** with codec strings (`avc1.64001E`, `hvc1.2.4.L63.90`, `av01.0.01M.08`, `mp4a.40.2`...), a
   frame-size chart with key frames, and a frame list that jumps to each frame's bytes.
 - **Glossary** of concepts and of the open format's structures (every registered 4CC for
