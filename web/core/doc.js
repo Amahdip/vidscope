@@ -5,6 +5,9 @@
 //   detailAt(offset)    a Detail record describing bytes inside a payload (sample, NAL unit...)
 //   insights()          findings for the File Insights tab
 //   glossary()          format-specific glossary entries
+//   frameCodec(t)       codec family and context for classifying a track's frames (I/P/B)
+//   framesContiguous    false when a frame's bytes are scattered (MPEG-TS packets)
+//   frameHead(t, i, n)  the first n bytes of frame i's codec data
 //
 // A Track (doc.tracks) looks like:
 //   { id, index, kind: 'video'|'audio'|'subtitle'|'data', codec, codecName, codecString,
@@ -82,5 +85,26 @@ export class Doc {
 
   glossary() {
     return [];
+  }
+
+  /**
+   * What web/codecs/frametype.js needs to classify the frames of track t:
+   * { family, lengthSize, annexB, state }, or null when its frames can't be read as codec data.
+   */
+  frameCodec(t) {
+    const c = t.sampleCfg;
+    const family = c?.family ?? t.family ?? null;
+    return family ? { family, lengthSize: c?.lengthSize ?? 4, annexB: !!c?.annexB, encrypted: !!c?.encrypted, state: c?.state ?? null } : null;
+  }
+
+  /** True when frame i's codec data is the single run samples.offsets[i] … + sizes[i]. */
+  get framesContiguous() {
+    return true;
+  }
+
+  /** The first n bytes of frame i of track t. */
+  frameHead(t, i, n) {
+    const s = t.samples;
+    return this.source.read(s.offsets[i], Math.min(s.sizes[i], n));
   }
 }

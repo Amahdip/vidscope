@@ -386,15 +386,7 @@ export async function insights(doc) {
     }
     const s = t.samples;
     if (!s) continue;
-    if (t.kind === 'video' && t.gop) {
-      const g = t.gop;
-      if (g.count > 1) {
-        const long = g.maxSeconds > 10;
-        add(long ? 'warn' : 'info', 'Tracks', `${t.short}: a key frame every ${fmtNum(g.avgSeconds, 2)} s`, `Key frames are where decoding (and seeking) can start. ${fmtInt(g.count)} key frames, every ${fmtNum(g.avgFrames, 1)} frames on average; the longest gap is ${fmtInt(g.maxFrames)} frames (${fmtNum(g.maxSeconds, 2)} s).${long ? ' Long gaps make seeking slow or imprecise.' : ''}`, { node: t.node });
-      } else if (g.count === 1) {
-        add('info', 'Tracks', `${t.short}: a single key frame`, 'Only the first frame is a key frame: seeking anywhere else means decoding from the start (or showing corrupt pictures).', { node: t.node });
-      }
-    }
+    // Key frame intervals and GOPs are reported for every format by web/core/frames.js.
     if (s.cto) {
       const first = Array.from(s.pts.subarray(0, 6), (v) => fmtInt(v)).join(', ');
       add('info', 'Tracks', `${t.short}: frames are stored in decode order (B-frames)`, `Matroska stores only presentation timestamps, so with B-frames the block timestamps jump back and forth in file order (here ${first}… ticks). Decoders reorder the frames; decode times are not stored and Vidscope derives them.`, { node: t.node });

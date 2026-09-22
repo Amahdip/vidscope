@@ -133,6 +133,15 @@ class MkvDoc extends Doc {
     return out.length ? out : null;
   }
 
+  frameCodec(t) {
+    if (t.compressed) return null;
+    const c = super.frameCodec(t);
+    if (c) return c;
+    if (/^V_MPEG4\/ISO\/(SP|ASP|AP)$/.test(t.codec ?? '')) return { family: 'mpeg4v' };
+    if (t.codec === 'V_MPEG2' || t.codec === 'V_MPEG1') return { family: 'mpeg2v' };
+    return null;
+  }
+
   /** Parse (and cache) the codec units of the frames overlapping [a, b). */
   async ensureUnits(a, b) {
     const runs = this.overlay(a, b) ?? [];

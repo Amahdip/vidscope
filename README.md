@@ -26,6 +26,13 @@ media frame it belongs to, and explains in plain words what it is for.
   variable frame rate, HDR, encryption, the encoder and its settings, metadata, chapters, and
   integrity problems. Per format: Matroska Cues, SeekHead and CRC-32s; TS timing (PCR,
   PAT/PMT repetition, continuity counters); AVI indexes; FLV metadata against the tags.
+- **Frames view**: every frame of a video track as an I-, P- or B-frame (with IDR and open-GOP
+  entry frames, B-frames that are references, hidden VP9/AV1 frames), sized and coloured in a
+  zoomable chart, grouped into GOPs, and shown in decoding order next to display order. The
+  types are read from each frame's slice or frame header and match what FFmpeg's decoders
+  report, for H.264, HEVC, AV1, VP9, VP8, MPEG-2, MPEG-4 Part 2, Sorenson and VP6 in every
+  container. Tooltips and short notes explain GOPs, open and closed GOPs, B-pyramids and why the
+  key frame interval matters for streaming.
 - **Tracks** with codec strings (`avc1.64001E`, `hvc1.2.4.L63.90`, `av01.0.01M.08`, `mp4a.40.2`...), a
   frame-size chart with key frames, and a frame list that jumps to each frame's bytes.
 - **Glossary** of concepts and of the open format's structures (every registered 4CC for

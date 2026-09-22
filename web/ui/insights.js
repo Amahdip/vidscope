@@ -2,6 +2,7 @@
 
 import { h, clear, copyText, icon } from './dom.js';
 import { hex } from '../core/util.js';
+import { frameInsights } from '../core/frames.js';
 
 const ICONS = { good: '✓', info: 'i', warn: '!', bad: '✕' };
 const ORDER = ['Overview', 'Encoding', 'Layout', 'Tracks', 'Timing', 'Metadata', 'Integrity'];
@@ -36,9 +37,18 @@ export class InsightsView {
     clear(this.el);
     this.el.append(h('div', { class: 'empty-state' }, 'Analysing the file…'));
     try {
-      const items = await doc.insights();
+      // The format's own findings, plus GOP and frame-type findings shared by every format.
+      const [items, frames] = await Promise.all([
+        doc.insights(),
+        frameInsights(doc).catch((e) => {
+          console.error(e);
+          return [];
+        }),
+      ]);
       if (this.doc !== doc) return;
-      this.items = items;
+      // A format may already report the same finding in its own words.
+      const titles = new Set(items.map((i) => i.title));
+      this.items = [...items, ...frames.filter((i) => !titles.has(i.title))];
     } catch (e) {
       console.error(e);
       this.items = [{ level: 'bad', group: 'Integrity', title: 'Could not analyse the file', text: e.message }];

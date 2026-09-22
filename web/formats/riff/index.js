@@ -37,6 +37,12 @@ class RiffDoc extends Doc {
     return this.frameIndex?.count ? this.frameIndex.runs(a, b, this.unitCache) : null;
   }
 
+  frameCodec(t) {
+    const c = super.frameCodec(t);
+    if (c && t.family === 'mpeg4v') c.state = t.mp4v ?? null;
+    return c;
+  }
+
   /** Parse (and cache) codec units of the frames overlapping [a, b). */
   async ensureUnits(a, b) {
     const idx = this.frameIndex;

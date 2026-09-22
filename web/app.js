@@ -5,12 +5,14 @@ import { openDocument } from './formats/index.js';
 import { BlobSource, HttpSource } from './core/source.js';
 import { fieldsAt, ensureChildren } from './core/model.js';
 import { parseOffset, hex } from './core/util.js';
+import { frameTypes, cancelFrameScans } from './core/frames.js';
+import { frameLabel } from './codecs/frametype.js';
 import { installTips, setTipFileSize, hideTip } from './ui/tooltip.js';
 import { h, toast } from './ui/dom.js';
 import { Topbar } from './ui/topbar.js';
 import { Mapbar } from './ui/mapbar.js';
 import { LeftPane } from './ui/leftpane.js';
-import { HexView } from './ui/hexview.js';
+import { CenterPane } from './ui/centerpane.js';
 import { RightPane } from './ui/rightpane.js';
 import { Welcome } from './ui/welcome.js';
 
@@ -27,6 +29,7 @@ const store = createStore({
   level: null,
   sel: null,
   leftTab: loadPref('leftTab', 'structure'),
+  centerTab: loadPref('centerTab', 'bytes'),
   rightTab: 'inspector',
   samplesReady: false,
 });
@@ -46,6 +49,20 @@ export function hitRange(hit) {
     return [start, start + f.entrySize];
   }
   return [f.offset, f.offset + Math.max(1, f.size)];
+}
+
+/** Add the frame's type (I, P, B...) to a frame detail, reading its header if needed. */
+async function addFrameType(doc, detail) {
+  const t = detail.track;
+  const i = detail.sample;
+  if (t?.kind !== 'video' || i === undefined || i === null || !t.samples?.count) return;
+  const ft = frameTypes(doc, t);
+  if (!ft.supported) return;
+  if (!ft.have[i]) await ft.ensure(i, i + 1, { urgent: true });
+  if (!ft.have[i] || !ft.type[i]) return;
+  const at = detail.rows.findIndex(([k]) => k === 'size');
+  detail.rows.splice(at >= 0 ? at + 1 : 1, 0, ['frame type', frameLabel(ft.family, ft.type[i], ft.flags[i])]);
+  detail.frameType = { ft, i };
 }
 
 function levelFor(node, doc, current) {
@@ -103,6 +120,7 @@ const app = {
   async openEntry(entry, { hash } = {}) {
     const my = ++seq;
     hideTip();
+    if (store.get().doc) cancelFrameScans(store.get().doc);
     store.set({ current: entry, loading: { name: entry.name, done: 0, total: entry.size }, error: null });
     const raw = entry.kind === 'server'
       ? new HttpSource(`api/files/${entry.id}/data`, entry.size, entry.name)
@@ -190,6 +208,7 @@ const app = {
         console.error(e);
       }
     }
+    if (detail?.kind === 'sample') await addFrameType(doc, detail);
     if (my !== seq) return;
     let range = null;
     if (hits.length) range = hitRange(hits[0]);
@@ -458,6 +477,7 @@ async function boot() {
     if (changed.has('theme')) applyTheme(s.theme);
     if (changed.has('mode')) applyMode(s.mode);
     if (changed.has('leftTab')) savePref('leftTab', s.leftTab);
+    if (changed.has('centerTab')) savePref('centerTab', s.centerTab);
     const empty = !s.doc;
     document.getElementById('app').classList.toggle('empty', empty);
     document.getElementById('welcome').hidden = !empty;
@@ -466,7 +486,8 @@ async function boot() {
   app.topbar = new Topbar(document.getElementById('topbar'), app);
   app.mapbar = new Mapbar(document.getElementById('mapbar'), app);
   app.left = new LeftPane(document.getElementById('left'), app);
-  app.hex = new HexView(document.getElementById('center'), app);
+  app.center = new CenterPane(document.getElementById('center'), app);
+  app.hex = app.center.hex;
   app.right = new RightPane(document.getElementById('right'), app);
   app.welcome = new Welcome(document.getElementById('welcome'), app);
   document.getElementById('app').classList.add('empty');
