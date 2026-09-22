@@ -1,5 +1,7 @@
 // General concepts shown in every file's glossary, whatever the container.
 
+import { ENCODING_CONCEPTS } from './encoding-glossary.js';
+
 export const CONCEPTS = [
   ['offset', 'Offset', 'A byte’s position counted from the start of the file, starting at 0. Vidscope shows offsets in decimal and in hexadecimal (0x…); the hex view has 16 bytes per row, so the row label is the offset of its first byte.'],
   ['big-endian', 'Byte order', 'Multi-byte numbers in MP4, Matroska and MPEG-TS are big-endian: the most significant byte comes first, so the four bytes 00 00 00 20 mean 32. RIFF formats (AVI, WAV) are little-endian: 20 00 00 00 means 32.'],
@@ -51,5 +53,5 @@ export const CONCEPTS = [
 ];
 
 export function conceptEntries() {
-  return CONCEPTS.map(([term, name, desc]) => ({ term, name, desc, cat: 'concept' }));
+  return [...CONCEPTS, ...ENCODING_CONCEPTS].map(([term, name, desc, more]) => ({ term, name, desc, more, cat: 'concept' }));
 }

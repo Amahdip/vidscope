@@ -300,7 +300,7 @@ export function parseSps(r) {
   s.log2_max_poc_lsb = r.ue('log2_max_pic_order_cnt_lsb_minus4', { display: (v) => `${v} → ${v + 4} bits` }) + 4;
   const ordering = r.flag('sps_sub_layer_ordering_info_present_flag');
   for (let i = ordering ? 0 : s.max_sub_layers_minus1; i <= s.max_sub_layers_minus1; i++) {
-    r.ue(`sps_max_dec_pic_buffering_minus1[${i}]`);
+    s.max_dec_pic_buffering = r.ue(`sps_max_dec_pic_buffering_minus1[${i}]`, { desc: 'Pictures the decoder must be able to hold (minus 1), for reference and reordering. The level limits it.' }) + 1;
     s.max_num_reorder = r.ue(`sps_max_num_reorder_pics[${i}]`, { desc: 'How many pictures may precede another in decoding order but follow it in display order.' });
     r.ue(`sps_max_latency_increase_plus1[${i}]`);
   }
