@@ -1,12 +1,14 @@
-// Right pane: INSPECTOR / FILE INSIGHTS tabs.
+// Right pane: INSPECTOR / FILE INSIGHTS / COMMANDS tabs.
 
 import { h } from './dom.js';
 import { InspectorView } from './inspector.js';
 import { InsightsView } from './insights.js';
+import { CommandsView } from './commands.js';
 
 const TABS = [
   ['inspector', 'Inspector'],
   ['insights', 'File insights'],
+  ['commands', 'Commands'],
 ];
 
 export class RightPane {
@@ -17,6 +19,7 @@ export class RightPane {
     el.append(h('div', { class: 'tabs', role: 'tablist' }, this.buttons), ...Object.values(this.bodies));
     this.inspector = new InspectorView(this.bodies.inspector, app);
     this.insights = new InsightsView(this.bodies.insights, app);
+    this.commands = new CommandsView(this.bodies.commands, app);
     app.store.subscribe((s, ch) => {
       if (ch.has('rightTab') || ch.has('doc')) this.render();
     });
@@ -28,5 +31,6 @@ export class RightPane {
     for (const b of this.buttons) b.setAttribute('aria-selected', String(b.dataset.tab === s.rightTab));
     for (const [id, body] of Object.entries(this.bodies)) body.hidden = id !== s.rightTab;
     if (s.rightTab === 'insights') this.insights.render();
+    if (s.rightTab === 'commands') this.commands.render();
   }
 }

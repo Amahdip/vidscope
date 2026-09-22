@@ -80,6 +80,14 @@ FFmpeg, and `npm start` opens them.
   pixel. Every figure explains itself on hover, and Beginner mode adds plain-language notes.
 - **Tracks** with codec strings (`avc1.64001E`, `hvc1.2.4.L63.90`, `av01.0.01M.08`, `mp4a.40.2`...), a
   frame-size chart with key frames, and a frame list that jumps to each frame's bytes.
+- **Commands**: the best-known ffprobe, ffplay and ffmpeg commands to inspect (streams, packets,
+  frame types, GOP pattern, bitrate per second, HDR metadata, hex dumps), watch (frame types, motion
+  vectors, scopes, side-by-side, low latency), fix (remux, fast start, fixed GOPs, CRF, capped CRF,
+  2-pass and CBR with x264 or x265, HLS and DASH, exact cuts, loudness, rotation) and measure
+  (PSNR, SSIM, VMAF, EBU R128, interlacing, black, silence, crop). Every token is explained on hover,
+  and the commands are filled in for the open file: its path, the selected track as a stream
+  specifier (`v:0`, `a:1`) and the selected frame's time for `-ss`, so the same packets, frame types
+  and bytes Vidscope shows can be seen through FFmpeg.
 - **Glossary** of concepts (including encoding: CRF, VBV, QP, profiles, levels, presets...)
   and of the open format's structures (every registered 4CC for MP4, the Matroska elements,
   TS packets and tables, RIFF chunks, FLV tags), marking what is present in the open file.
@@ -149,11 +157,12 @@ AC-3/E-AC-3, FLAC, ALAC, MP3.
 
 ```
 bin/vidscope.js          local server: static UI + byte ranges of the files you pass
-web/core/                byte sources with a block cache, FieldReader, the node tree, Doc
+web/core/                byte sources with a block cache, FieldReader, the node tree, Doc,
+                         the FFmpeg command catalogue (commands.js)
 web/codecs/              codec configurations and bitstream headers (H.264, HEVC, AV1, VP9, audio...),
                          encoder settings (x264/x265) and codec level limits
 web/formats/<format>/    one directory per container; see docs/FORMATS.md
-web/ui/                  map, tree, hex view, inspector, insights, tracks, glossary, compare
+web/ui/                  map, tree, hex view, inspector, insights, commands, tracks, glossary, compare
 scripts/dump.mjs         print what Vidscope sees, from the command line
 ```
 
@@ -175,7 +184,11 @@ npm test
 
 Tests compare every sample Vidscope locates (offset, size, timestamps, key frame flag)
 with FFmpeg's demuxer through `ffprobe`, check that the node tree is consistent (children
-inside their parents, no overlaps, fields inside their boxes), and cover the server.
+inside their parents, no overlaps, fields inside their boxes), and cover the server. They also
+run every command of the Commands tab against the samples (ffmpeg for one second, ffplay's filter
+graphs through ffmpeg and, when `ffplay` is installed, in a headless ffplay), check that `-ss`
+at a selected frame's time extracts exactly that frame, and skip commands that need parts your
+FFmpeg build lacks (such as libvmaf).
 
 ```bash
 node scripts/dump.mjs samples/h264-aac.mp4 --fields --tracks --insights --sample 0:0
