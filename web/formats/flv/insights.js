@@ -206,17 +206,7 @@ async function codecs(doc, out) {
       }
       if (s?.count) {
         if (!s.key[0]) out.push({ level: 'warn', group: 'Encoding', title: `${t.label}: does not start with a key frame`, text: 'The first video frame is an inter frame: players show garbage or nothing until the first key frame.', offset: s.tags[0] });
-        const keys = [];
-        for (let i = 0; i < s.count; i++) if (s.key[i]) keys.push(s.dts[i]);
-        if (keys.length > 1) {
-          let max = 0;
-          for (let i = 1; i < keys.length; i++) max = Math.max(max, keys[i] - keys[i - 1]);
-          const avg = (keys[keys.length - 1] - keys[0]) / (keys.length - 1);
-          out.push({ level: max > 10000 ? 'warn' : 'info', group: 'Encoding', title: `${t.label}: key frame every ${fmtNum(avg / 1000, 2)} s`, text: `${fmtInt(keys.length)} key frames, on average ${fmtNum(avg / 1000, 2)} s apart (at most ${fmtNum(max / 1000, 2)} s). Seeking lands on a key frame, and live players joining the stream wait for the next one.${max > 10000 ? ' Gaps over 10 s make seeking coarse and slow joins.' : ''}` });
-        } else if (keys.length === 1 && s.count > 1) {
-          const long = (s.dts[s.count - 1] - s.dts[0]) > 10000;
-          out.push({ level: long ? 'warn' : 'info', group: 'Encoding', title: `${t.label}: a single key frame`, text: `Only the first frame is a key frame${long ? '' : ' (normal for a clip shorter than the encoder\'s key frame interval)'}: seeking must decode from it, and a player joining the stream later cannot start.` });
-        }
+        // Key frame intervals and GOPs are reported for every format by web/core/frames.js.
         if (s.cto) {
           let neg = 0;
           for (let i = 0; i < s.count; i++) if (s.cto[i] < 0) neg++;

@@ -538,33 +538,13 @@ export async function insights(doc) {
     const s = t.samples;
     if (!s?.count) continue;
     if (t.kind === 'video') {
-      const keys = [];
       let keyNoRai = 0;
       let raiNoKey = 0;
       for (let i = 0; i < s.count; i++) {
-        if (s.key[i]) keys.push(i);
         if (s.key[i] && !s.rai[i]) keyNoRai++;
         if (!s.key[i] && s.rai[i]) raiNoKey++;
       }
-      if (!keys.length) {
-        add({ level: 'warn', group: 'Encoding', title: `${t.label}: no key frame`, text: 'No frame in this file starts with an IDR/IRAP picture, so a player cannot start decoding cleanly: expect a grey or corrupted picture until a key frame arrives.' });
-      } else {
-        let maxGap = 0;
-        let sumGap = 0;
-        for (let i = 1; i < keys.length; i++) {
-          const g = (s.dts[keys[i]] - s.dts[keys[i - 1]]) / PTS_HZ;
-          sumGap += g;
-          if (g > maxGap) maxGap = g;
-        }
-        const avg = keys.length > 1 ? sumGap / (keys.length - 1) : null;
-        add({
-          level: maxGap > 10 ? 'warn' : 'info',
-          group: 'Encoding',
-          title: `${t.label}: ${fmtInt(keys.length)} key frame${keys.length === 1 ? '' : 's'}${avg ? `, one every ${fmtNum(avg, 2)} s` : ''}`,
-          text: `Key frames are where decoding, seeking and HLS/DASH segments can start. ${keys[0] ? `The first key frame is frame ${fmtInt(keys[0] + 1)}: the ${fmtInt(keys[0])} frame${keys[0] === 1 ? '' : 's'} before it cannot be decoded on their own.` : 'The file starts with a key frame.'}${maxGap > 10 ? ' Gaps over 10 s make seeking slow and segments long.' : ''}`,
-          facts: [['key frames', fmtInt(keys.length)], ['longest gap', maxGap ? `${fmtNum(maxGap, 2)} s` : '—']],
-        });
-      }
+      // Key frame intervals and GOPs are reported for every format by web/core/frames.js.
       if (keyNoRai && t.family) {
         add({ level: 'warn', group: 'Encoding', title: `${t.label}: ${fmtInt(keyNoRai)} key frame${keyNoRai === 1 ? '' : 's'} without random_access_indicator`, text: 'These PES packets start with a key frame but their first packet does not set random_access_indicator in the adaptation field. Segmenters and players that look for the flag (instead of parsing the video) will not find these entry points.' });
       }

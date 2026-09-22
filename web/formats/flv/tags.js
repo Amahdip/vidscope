@@ -359,6 +359,8 @@ function configFields(r, h) {
   const cfg = { family: h.family };
   const n = r.remaining;
   if (n <= 0) return cfg;
+  // Where the record's bytes are, for a decoder (WebCodecs wants the avcC/hvcC/av1C bytes).
+  cfg.record = [r.abs, r.abs + n];
   try {
     if (h.kind === 'video') {
       if (h.family === 'avc') {

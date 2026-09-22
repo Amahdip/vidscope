@@ -297,18 +297,22 @@ class TsDoc extends Doc {
     return ans >= 0 && offset < s.ends[ans] ? ans : -1;
   }
 
-  /** Collect the bytes of sample i of track t from the packets it spans; returns { bytes, chunks }. */
-  async frameBytes(t, i) {
+  /**
+   * Collect the bytes of sample i of track t from the packets it spans (at most `max` of them);
+   * returns { bytes, chunks }.
+   */
+  async frameBytes(t, i, max = MAX_FRAME_READ) {
     const s = t.samples;
     const L = this.layout;
     const S = L.size;
     const start = s.offsets[i];
     const end = s.ends[i];
     const size = s.sizes[i];
+    const want = Math.min(size, max, MAX_FRAME_READ);
     const first = L.first + Math.floor((start - L.first) / S) * S;
     const last = L.first + Math.ceil((end - L.first) / S) * S; // end of the packet holding the last byte
-    const span = await this.source.read(first, Math.min(last - first, Math.ceil((MAX_FRAME_READ / 184) + 2) * S));
-    const out = new Uint8Array(Math.min(size, MAX_FRAME_READ));
+    const span = await this.source.read(first, Math.min(last - first, Math.ceil((want / 184) + 2) * S));
+    const out = new Uint8Array(want);
     const chunks = [];
     let w = 0;
     for (let p = 0; p + S <= span.length && w < out.length; p += S) {
@@ -331,6 +335,14 @@ class TsDoc extends Doc {
       w += n;
     }
     return { bytes: out.subarray(0, w), chunks };
+  }
+
+  get framesContiguous() {
+    return false;
+  }
+
+  async frameHead(t, i, n) {
+    return (await this.frameBytes(t, i, n)).bytes;
   }
 
   async frameUnits(t, i) {
