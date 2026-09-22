@@ -676,3 +676,78 @@ details.sect[open] > summary::before { content: "▾"; }
 .help > div { background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 10px; padding: 18px 22px; width: min(560px, 92vw); box-shadow: var(--shadow); }
 .help h3 { margin: 0 0 10px; }
 .help .kv { font-size: 12.5px; }
+
+/* ------------------------------------------------------------------ commands */
+
+.cmds { padding: 12px 14px 40px; }
+.cmds h4 { font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-3); margin: 18px 0 6px; font-weight: 500; display: flex; gap: 8px; align-items: baseline; }
+.cmds h4 .count { letter-spacing: 0; background: var(--bg-3); border-radius: 8px; padding: 0 6px; }
+.cmd-ctx { display: flex; flex-wrap: wrap; gap: 5px; align-items: baseline; font-family: var(--mono); font-size: 11.5px; }
+.cmd-ctx .cx { border: 1px solid var(--line-2); background: var(--bg-2); border-radius: 10px; padding: 1px 8px; color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-ctx .cx b { color: var(--text-3); font-weight: 400; }
+.cmd-ctx .cx.miss { border-style: dashed; color: var(--warn); }
+.cxl { color: var(--text-3); font-family: var(--mono); font-size: 11.5px; }
+.cmd-tools { margin: 10px 0 2px; }
+.cmd-tools input[type="search"] { width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--bg-2); outline: none; }
+.cmd-tools input[type="search"]:focus { border-color: var(--accent); }
+.cprimer { border: 1px solid var(--line-2); border-radius: 8px; padding: 8px 12px; margin: 10px 0; background: var(--bg-2); }
+.cprimer > summary { cursor: pointer; font-weight: 600; font-size: 13px; list-style: none; }
+.cprimer > summary::-webkit-details-marker { display: none; }
+.cprimer > summary::before { content: "▸ "; color: var(--text-3); font-size: 10px; }
+.cprimer[open] > summary::before { content: "▾ "; }
+.cenc { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 4px 0 8px; }
+.cenc .seg button { padding: 3px 10px; font-family: var(--mono); font-size: 11.5px; }
+.ccard { border: 1px solid var(--line-2); border-radius: 7px; padding: 9px 11px; margin: 8px 0; background: var(--bg-1); scroll-margin-top: 8px; }
+.ccard.na { border-style: dashed; }
+.ccard.na .cline { opacity: 0.75; }
+.ccard.flash { animation: cflash 1.2s ease-out; }
+@keyframes cflash { from { box-shadow: 0 0 0 2px var(--accent); } to { box-shadow: 0 0 0 2px transparent; } }
+.ccard .ch { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.ccard .ct { font-weight: 600; font-size: 13.5px; margin-right: auto; }
+.ccard .chip { font-size: 10.5px; padding: 0 7px; }
+.ccard .chip.tool { color: var(--accent); }
+.ccard .chip.ess { color: var(--good); }
+.ccard .chip.need { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--line-2)); }
+.ccard .cp { margin: 4px 0 6px; }
+.cnote { font-size: 12px; color: var(--text-2); margin: 4px 0 6px; padding: 5px 9px; border-left: 2px solid var(--warn); background: color-mix(in srgb, var(--warn) 9%, transparent); border-radius: 0 4px 4px 0; }
+.cnote.uses { border-left-color: var(--accent); background: var(--accent-bg); }
+.cstep { font-size: 12px; color: var(--text-2); margin: 8px 0 2px; }
+.ccode { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: start; }
+.ccode .btn.copy { padding: 4px 7px; margin-top: 6px; display: inline-grid; place-items: center; }
+.ccode .btn.copy svg { width: 13px; height: 13px; }
+pre.code.cline { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); font-size: 12px; line-height: 1.65; }
+.tok { border-radius: 3px; transition: background 0.08s; cursor: help; }
+.tok.nw { white-space: nowrap; }
+.tok.hl, .prow.hl code { background: var(--sel-bg); }
+.tok.ctx { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
+.tok.ph { color: var(--warn); text-decoration: underline dashed; text-underline-offset: 3px; }
+.tok.k-tool { color: var(--accent-2); font-weight: 600; }
+.tok.k-flag { color: var(--c-index); }
+.tok.k-file { color: var(--c-type); }
+.tok.k-op { color: var(--text-3); font-weight: 600; }
+details.csect { margin: 6px 0 0; }
+details.csect > summary { cursor: pointer; list-style: none; font-size: 12.5px; color: var(--text-2); padding: 2px 0; display: flex; gap: 8px; align-items: baseline; }
+details.csect > summary::-webkit-details-marker { display: none; }
+details.csect > summary::before { content: "▸"; color: var(--text-3); font-size: 10px; width: 10px; }
+details.csect[open] > summary::before { content: "▾"; }
+details.csect > summary .count { color: var(--text-3); font-family: var(--mono); font-size: 11px; }
+.prow { display: grid; grid-template-columns: minmax(64px, max-content) minmax(0, 1fr); gap: 2px 12px; padding: 3px 4px; margin: 0 -4px; border-radius: 4px; font-size: 12.5px; color: var(--text-2); }
+.prow.hl { background: var(--hover-bg); }
+.prow code { font-family: var(--mono); font-size: 11.5px; color: var(--text); overflow-wrap: anywhere; max-width: 180px; border-radius: 3px; align-self: start; }
+.prow code.ph { color: var(--warn); }
+.prow code.ctx { color: var(--accent-2); }
+.prow.piece code { padding-left: 10px; }
+.pstep { font-family: var(--mono); font-size: 10.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3); margin: 8px 0 2px; }
+.clist { margin: 4px 0; padding-left: 18px; color: var(--text-2); font-size: 12.5px; }
+.clist li { margin: 3px 0; }
+.cotitle { font-size: 11.5px; color: var(--text-3); margin: 4px 0 0; }
+pre.code.cexample { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.omark { color: var(--text); background: var(--accent-bg); border-radius: 3px; cursor: help; }
+.term { text-decoration: underline dotted var(--text-3); text-underline-offset: 3px; cursor: help; }
+.cref { cursor: pointer; }
+.ccard .acts { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+.ccard .chip.view { color: var(--accent); cursor: pointer; }
+.ccard .chip.view:disabled { color: var(--text-3); cursor: default; }
+.cmore { margin: 14px 0; }
+details.cna { margin: 4px 0 10px; }
+.mode-raw .ccard details.csect, .mode-raw .ccard .cnote.uses { display: none; }
