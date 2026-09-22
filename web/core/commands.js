@@ -274,6 +274,9 @@ function outputStart(doc, tracks) {
  * track, or a subtitle/data track when it starts less than a second before them. -ss counts from here.
  */
 export function fileStart(doc) {
+  // Raw elementary streams (H.264, HEVC, MPEG-2 video files, format 'es') carry no timestamps:
+  // FFmpeg reports no start time for them and counts -ss from 0.
+  if (doc?.format?.id === 'es') return 0;
   let av = Infinity;
   let text = Infinity;
   for (const t of doc?.tracks ?? []) {
