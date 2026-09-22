@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vidscope</title>
+<meta name="description" content="See the bytes inside video files: an interactive anatomy viewer for MP4/MOV, Matroska/WebM, MPEG-TS, AVI and FLV.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f141b'/%3E%3Crect x='5' y='9' width='6' height='14' rx='1.5' fill='%235ee0a0'/%3E%3Crect x='13' y='9' width='14' height='6' rx='1.5' fill='%235aaef5'/%3E%3Crect x='13' y='17' width='14' height='6' rx='1.5' fill='%23b28cf5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<div id="app" class="app">
+  <header class="topbar" id="topbar"></header>
+  <section class="mapbar" id="mapbar"></section>
+  <main class="panes" id="panes">
+    <aside class="pane left" id="left"></aside>
+    <section class="pane center" id="center"></section>
+    <aside class="pane right" id="right"></aside>
+  </main>
+  <section class="welcome" id="welcome" hidden></section>
+</div>
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+<div class="drop-overlay" id="drop" hidden><div>Drop to open<span>parsed locally in your browser; nothing is uploaded</span></div></div>
+<input type="file" id="filepick" hidden>
+<noscript>Vidscope needs JavaScript.</noscript>
+</body>
+</html>
