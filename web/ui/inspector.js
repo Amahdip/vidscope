@@ -4,6 +4,7 @@ import { h, clear, copyText, saveBytes } from './dom.js';
 import { fmtInt, hex, hexBytes, humanSize, humanBytes, pct, HEX2 } from '../core/util.js';
 import { fieldPath, leafFields } from '../core/model.js';
 import { cell, cellDisplay, cellBytes, typeLabel } from '../core/fields.js';
+import { explainFrame } from '../codecs/frametype.js';
 
 const TABLE_ROW = 22;
 
@@ -177,6 +178,11 @@ export class InspectorView {
     const sec = h('section');
     sec.append(h('h2', null, h('span', { class: 'ty' }, d.title), d.subtitle ? ` · ${d.subtitle}` : ''));
     if (d.rows?.length) sec.append(h('dl', { class: 'kv' }, d.rows.flatMap(([k, v]) => [h('dt', null, k), h('dd', null, v)])));
+    if (d.frameType && this.app.store.get().mode !== 'raw') {
+      const { ft, i } = d.frameType;
+      sec.append(h('p', { class: 'prose' }, explainFrame(ft.family, ft.type[i], ft.flags[i])),
+        h('div', { class: 'chips' }, h('button', { class: 'chip', 'data-tip': 'See this frame among its neighbours: its type, size and GOP', onclick: () => this.app.store.set({ centerTab: 'frames' }) }, 'show in the Frames view')));
+    }
     if (d.text) sec.append(h('p', { class: 'prose' }, d.text));
     if (d.range) {
       sec.append(h('div', { class: 'chips' },
