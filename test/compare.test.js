@@ -64,6 +64,20 @@ test('audio codecs have one name whatever the container calls them', () => {
   assert.equal(audioCodecName({ codecName: 'MP3' }), 'MP3');
 });
 
+test('the same moment in files with different timescales', () => {
+  // 30 fps at 1/15360 s (512 ticks a frame) and at 1/16000 s (533 or 534 ticks, rounded).
+  const item = (ts, per) => {
+    const times = Float64Array.from({ length: 300 }, (_, k) => Math.round(k * per) / ts);
+    return { times, order: Uint32Array.from({ length: 300 }, (_, k) => k) };
+  };
+  const a = item(15360, 512);
+  const b = item(16000, 16000 / 30);
+  for (const k of [1, 92, 150, 299]) {
+    assert.equal(frameAtTime(a, a.times[k]), k);
+    assert.equal(frameAtTime(b, a.times[k]), k, `frame ${k}: ${b.times[k]} vs ${a.times[k]}`);
+  }
+});
+
 test('key frames line up when they are within half a frame', () => {
   const item = (keys, fps = 25) => ({ fps, keyTimes: Float64Array.from(keys), duration: 6 });
   const ref = item([0]);
