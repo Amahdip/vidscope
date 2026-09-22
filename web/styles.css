@@ -716,5 +716,4 @@ details.sect[open] > summary::before { content: "▾"; }
 .icard pre.code .cp { border-radius: 3px; }
 .icard pre.code .cp:hover { background: var(--accent-bg); color: var(--text); }
 .icard [data-tip] { cursor: help; }
-.icard .copy svg { width: 12px; height: 12px; vertical-align: -2px; }
 .icard .acts [data-tip], .icard summary [data-tip] { cursor: inherit; }
