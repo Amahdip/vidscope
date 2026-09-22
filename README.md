@@ -1,7 +1,7 @@
 # Vidscope
 
 See the bytes inside video files. Vidscope maps every byte of a container
-(MP4/MOV, Matroska/WebM, MPEG-TS, AVI/WAV, FLV) to the box, element, field, table entry or
+(MP4/MOV, Matroska/WebM, MPEG-TS, AVI/WAV, FLV, raw H.264/HEVC/MPEG-2 streams) to the box, element, field, table entry or
 media frame it belongs to, and explains in plain words what it is for.
 
 ## Quick start
@@ -108,7 +108,8 @@ between people looking at the same files.
 | MPEG transport stream (TS, M2TS/MTS, 188/192/204-byte packets) | Packet headers, adaptation fields (PCR, splice countdown, private data), PES headers (PTS/DTS), PSI/SI tables (PAT, PMT, CAT, NIT, BAT, SDT, EIT, TDT/TOT, SCTE-35) with CRC-32 checks and about 40 descriptors; frames reassembled across packets and split (ADTS, LATM, AC-3, E-AC-3, MPEG audio), with key frame detection |
 | AVI, OpenDML, WAV, BWF, RF64 (RIFF) | hdrl, stream headers and formats, idx1 and OpenDML indexes, `movi` chunks (grouped, loaded lazily), AVIs without an index (scanned); WAV fmt/WAVE_FORMAT_EXTENSIBLE, bext, cue, smpl, iXML, ds64 and more, with the PCM sample frame or ADPCM block under the cursor decoded |
 | FLV | Header, tags and PreviousTagSize checks, onMetaData (AMF0, including keyframe index arrays), AVC/HEVC/AV1/VP9 and AAC/Opus configuration records including Enhanced RTMP; resynchronises after damage |
-| Anything else | Shown as bytes with the hex view and find; the signature is identified (MPEG-PS, Ogg, MXF, ASF, raw H.264/HEVC/AAC/MP3 streams, images...) |
+| Raw video streams (H.264 and HEVC Annex B, MPEG-1/2 video: .h264, .264, .hevc, .265, .m2v) | Every NAL unit (or MPEG-2 header) decoded and grouped into frames the way a decoder does; key frames, picture types, display order rebuilt from the picture order count (or temporal reference), and the frame rate from the SPS VUI (or the sequence header); explains what an elementary stream lacks and how to wrap it without re-encoding |
+| Anything else | Shown as bytes with the hex view and find; the signature is identified (MPEG-PS, Ogg, MXF, ASF, raw AAC/MP3 streams, images...) |
 
 Codec bitstreams: H.264 (SPS with VUI and HRD, PPS, SEI, slice headers), H.265 (VPS, SPS
 with VUI, PPS, SEI, slice headers), AV1 (sequence and frame headers, OBUs), VP8/VP9 frame

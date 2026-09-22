@@ -189,8 +189,8 @@ function profileTierLevel(r, maxSubLayersMinus1, s) {
     s.compat_flags = r.bits(32, 'general_profile_compatibility_flags', { display: (v) => `0x${v.toString(16).padStart(8, '0')}` });
     s.progressive = r.flag('general_progressive_source_flag');
     s.interlaced = r.flag('general_interlaced_source_flag');
-    r.flag('general_non_packed_constraint_flag');
-    r.flag('general_frame_only_constraint_flag');
+    s.non_packed = r.flag('general_non_packed_constraint_flag');
+    s.frame_only = r.flag('general_frame_only_constraint_flag');
     r.bits(43, 'general_constraint_flags', { desc: 'Profile-specific constraint flags (e.g. max_10bit, max_422chroma for RExt).' });
     r.flag('general_inbld_flag');
     s.level_idc = r.u8('general_level_idc', { key: true, display: (v) => `${v} → level ${levelName(v)}` });

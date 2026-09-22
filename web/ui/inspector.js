@@ -162,7 +162,7 @@ export class InspectorView {
     else region = node.parent ? `payload of ${node.type}` : 'outside any structure';
     kv.append(h('dt', null, 'region'), h('dd', null, region));
     const rel = sel.offset - node.offset;
-    const within = ['box', 'element', 'chunk', 'packet', 'tag'].includes(node.kind) ? node.kind : 'range';
+    const within = { box: 'box', element: 'element', chunk: 'chunk', packet: 'packet', tag: 'tag', frame: 'frame', nal: 'NAL unit' }[node.kind] ?? 'range';
     if (node.parent) kv.append(h('dt', null, `within ${within}`), h('dd', null, `byte ${fmtInt(rel)} of ${fmtInt(node.size)}`));
     sec.append(kv);
     if (sel.hits.length > 1) {
@@ -413,6 +413,7 @@ function headerTitle(node) {
   if (node.kind === 'chunk') return 'Chunk header';
   if (node.kind === 'packet') return 'Packet header';
   if (node.kind === 'tag') return 'Tag header';
+  if (node.kind === 'nal') return 'Start code and NAL unit header';
   return 'Box header';
 }
 
