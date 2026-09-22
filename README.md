@@ -60,6 +60,17 @@ FFmpeg, and `npm start` opens them.
   per pixel, a guess at the rate control (constant, capped or quality-based), and a decoder
   buffer (VBV) check that shows whether a viewer receiving the stream at a given `-maxrate` and
   `-bufsize` would keep up, and which frame would stall.
+- **Compare versions**: a source next to the versions converted from it (the profiles of a
+  bitrate ladder, a remux, another codec). What each conversion changed or lost (resolution,
+  bitrate, codec settings, GOP, colour, audio channels, subtitles...), whether the video was
+  copied or re-encoded, the ladder's bitrates and bits per pixel, whether key frames line up
+  across the versions and which segment lengths would work, and a microscope that shows, for
+  any moment, the frame each version shows then: its type, size, GOP and what a decoder must
+  decode first. A **pixel microscope** decodes those pictures in the browser (WebCodecs: H.264,
+  HEVC, AV1, VP9, VP8), shows them side by side with one magnifier on the same spot of each,
+  down to single pixels, a difference view against the reference, and PSNR and SSIM computed as
+  FFmpeg's psnr and ssim filters do. Pick the files from the file menu or the start page; a
+  comparison of files from the command line can be bookmarked (`?compare=3,4,5`).
 - **Tracks** with codec strings (`avc1.64001E`, `hvc1.2.4.L63.90`, `av01.0.01M.08`, `mp4a.40.2`...), a
   frame-size chart with key frames, and a frame list that jumps to each frame's bytes.
 - **Glossary** of concepts and of the open format's structures (every registered 4CC for
@@ -133,7 +144,7 @@ bin/vidscope.js          local server: static UI + byte ranges of the files you 
 web/core/                byte sources with a block cache, FieldReader, the node tree, Doc
 web/codecs/              codec configurations and bitstream headers (H.264, HEVC, AV1, VP9, audio...)
 web/formats/<format>/    one directory per container; see docs/FORMATS.md
-web/ui/                  map, tree, hex view, inspector, insights, tracks, glossary
+web/ui/                  map, tree, hex view, inspector, insights, tracks, glossary, compare
 scripts/dump.mjs         print what Vidscope sees, from the command line
 ```
 
