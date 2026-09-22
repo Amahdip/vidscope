@@ -330,7 +330,13 @@ export class BitrateView {
     g.textAlign = 'right';
     g.fillText(`top ${fmtBitrate(max / d.bin)}`, w - 2, TOP - 4);
     g.textAlign = 'left';
-    g.fillText(`average ${fmtBitrate(this.stats.avg)}`, 4, Math.max(TOP + 12, avgY - 3));
+    // The average's label sits on a patch of the chart's background, so bars cannot hide it.
+    const avgLabel = `average ${fmtBitrate(this.stats.avg)}`;
+    const labelY = Math.max(TOP + 14, avgY - 3);
+    g.fillStyle = col('--bg-1');
+    g.fillRect(2, labelY - 14, g.measureText(avgLabel).width + 6, 15);
+    g.fillStyle = col('--text-2');
+    g.fillText(avgLabel, 5, labelY);
     this.capL.textContent = fmtDuration(d.start, false);
     this.capR.textContent = fmtDuration(d.end, false);
     this.drawVbv();
