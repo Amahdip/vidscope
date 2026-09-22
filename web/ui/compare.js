@@ -7,6 +7,7 @@ import { h, clear } from './dom.js';
 import { showTip, hideTip } from './tooltip.js';
 import { loadPref, savePref } from './store.js';
 import { chipClass } from './frames.js';
+import { PixelScope } from './pixels.js';
 import { openDocument } from '../formats/index.js';
 import { cancelFrameScans } from '../core/frames.js';
 import { frameLabel, explainFrame } from '../codecs/frametype.js';
@@ -32,7 +33,7 @@ const LEARN = [
   ['Why the small versions get more bits per pixel', 'Shrinking the picture removes pixels, not detail: each pixel of a 360p frame stands for a 3×3 block of the 1080p frame, so it changes more from frame to frame and costs more bits to code. Fixed costs (headers, key frames, motion vectors) also weigh more at low bitrates. Bits per pixel therefore rises as the resolution falls; a ladder that kept it constant would starve its small versions.'],
   ['What a conversion can lose', 'Whatever the command does not ask to keep. By default FFmpeg keeps one video and one audio track (-map 0 keeps them all), cannot put most subtitle formats into MP4, applies a phone video\'s rotation to the pixels when re-encoding, and mixes surround sound to stereo when told -ac 2. Colour tags and HDR metadata can be dropped by filters and some encoders. The table marks each difference: ✕ lost, + new.'],
   ['Copied or re-encoded?', 'Converting can mean two things. Remuxing (-c copy) moves the same compressed frames into another container: nothing is decoded, quality is untouched and every frame keeps its exact size. Transcoding decodes and encodes again, and every generation loses a little quality. Vidscope compares frame sizes: when every frame has the same size, the stream was copied.'],
-  ['Measuring quality', 'Bitrate and resolution say how much data a version uses, not how good it looks. Quality metrics compare each version\'s decoded frames with the source: PSNR (in dB, simple), SSIM (structure) and VMAF (Netflix\'s 0–100 score, trained on viewers\' opinions). With an FFmpeg built with libvmaf, this scales a version back to the source size and prints its VMAF:\nffmpeg -i 720p.mp4 -i source.mp4 -lavfi "[0:v]scale=1920:1080:flags=bicubic[d];[d][1:v]libvmaf" -f null -'],
+  ['Measuring quality', 'Bitrate and resolution say how much data a version uses, not how good it looks. Quality metrics compare each version\'s decoded frames with the source: PSNR (in dB, simple), SSIM (structure) and VMAF (Netflix\'s 0–100 score, trained on viewers\' opinions). The pixel microscope above computes PSNR and SSIM for the picture on screen, the way FFmpeg\'s psnr and ssim filters do; a whole-video score averages every frame. With an FFmpeg built with libvmaf, this scales a version back to the source size and prints its VMAF:\nffmpeg -i 720p.mp4 -i source.mp4 -lavfi "[0:v]scale=1920:1080:flags=bicubic[d];[d][1:v]libvmaf" -f null -'],
   ['Making a ladder with FFmpeg', 'One command per version, with the same GOP settings in each so that key frames line up:\nffmpeg -i source.mp4 -c:v libx264 -preset slow -crf 23 -maxrate 3M -bufsize 6M -vf scale=-2:720 -g 48 -keyint_min 48 -sc_threshold 0 -c:a aac -b:a 128k -movflags +faststart 720p.mp4\nChange the scale, -maxrate and -bufsize for each step. -crf with -maxrate is "capped CRF": constant quality, with the peaks held down for streaming.'],
 ];
 
@@ -52,13 +53,17 @@ export class CompareView {
     this.sameScale = false;
     this.lanes = [];
     this.pending = 0;
+    this.pixels = new PixelScope(this);
     el.classList.add('cmp');
     app.store.subscribe((s, ch) => {
       if (ch.has('compare')) this.sync();
       else if (s.compare && ch.has('mode')) this.render();
       if (s.compare && ch.has('theme')) this.draw();
     });
-    new ResizeObserver(() => this.draw()).observe(el);
+    new ResizeObserver(() => {
+      this.draw();
+      this.pixels.paintZooms();
+    }).observe(el);
   }
 
   get state() {
@@ -77,6 +82,7 @@ export class CompareView {
     hideTip();
     if (!cmp) {
       clear(this.el);
+      this.pixels.prune(new Set()); // decoded pictures take memory; they are decoded again on return
       return;
     }
     for (const [key, slot] of this.slots) {
@@ -84,6 +90,7 @@ export class CompareView {
       if (slot.item?.doc && slot.item.doc !== this.app.store.get().doc) cancelFrameScans(slot.item.doc);
       this.slots.delete(key);
     }
+    this.pixels.prune(new Set([...this.slots.values()].map((sl) => sl.item?.doc).filter(Boolean)));
     for (const key of cmp.keys) if (!this.slots.has(key)) this.load(key);
     this.render();
   }
@@ -175,6 +182,7 @@ export class CompareView {
         body.append(this.ladder(items));
         body.append(this.timeline(items));
         body.append(this.scope(items));
+        body.append(this.pixels.section(items));
       }
       if (s.mode !== 'raw') {
         const learn = h('div', { class: 'flearn cmplearn' }, h('h4', null, 'Learn'));
@@ -447,6 +455,7 @@ export class CompareView {
     if (!fromSlider && this.slider) this.slider.value = String(this.t);
     this.renderScope();
     this.draw();
+    this.pixels.update();
   }
 
   stepFrame(dir) {

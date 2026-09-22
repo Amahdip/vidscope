@@ -436,7 +436,11 @@ export function bitsOverTime(it, bin, n) {
 
 // ------------------------------------------------------------ the frame shown at a moment
 
-/** Index (decoding order) of the frame a file shows at time t (seconds from its first frame). */
+/**
+ * Index (decoding order) of the frame a file shows at time t (seconds from its first frame).
+ * Times within a millisecond count as the same moment: files with different timescales round the
+ * same frame time differently (3.066667 s at 1/15360 s is 3.066688 s at 1/16000 s).
+ */
 export function frameAtTime(it, t) {
   const times = it.times;
   if (!times?.length) return -1;
@@ -445,7 +449,7 @@ export function frameAtTime(it, t) {
   let hi = times.length - 1;
   while (lo < hi) {
     const mid = (lo + hi + 1) >> 1;
-    if (times[mid] <= t + 1e-6) lo = mid;
+    if (times[mid] <= t + 1e-3) lo = mid;
     else hi = mid - 1;
   }
   return it.order[lo];
