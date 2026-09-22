@@ -16,7 +16,7 @@ export class Topbar {
     this.menu = null;
     this.build();
     app.store.subscribe((s, ch) => {
-      if (['files', 'current', 'doc', 'mode', 'theme', 'loading', 'server', 'docVersion', 'samplesReady'].some((k) => ch.has(k))) this.render();
+      if (['files', 'current', 'doc', 'mode', 'theme', 'loading', 'server', 'docVersion', 'samplesReady', 'compare', 'lastCompare'].some((k) => ch.has(k))) this.render();
     });
     this.render();
   }
@@ -73,10 +73,13 @@ export class Topbar {
   render() {
     const s = this.app.store.get();
     const doc = s.doc;
-    this.anatomy.textContent = doc ? doc.summary.anatomy : 'video file anatomy';
-    this.fileName.textContent = s.current ? s.current.name : s.files.length ? 'choose a file' : 'open a file';
+    this.anatomy.textContent = s.compare ? 'comparing versions' : doc ? doc.summary.anatomy : 'video file anatomy';
+    this.fileName.textContent = s.compare ? `${s.compare.keys.length} files compared` : s.current ? s.current.name : s.files.length ? 'choose a file' : 'open a file';
     clear(this.summary);
-    if (doc) {
+    if (s.compare) {
+      const ref = s.files.find((f) => f.key === s.compare.ref);
+      if (ref) this.summary.append(`reference: ${ref.name}`);
+    } else if (doc) {
       const parts = [humanBytes(doc.size), doc.summary.label];
       if (doc.summary.duration) parts.push(`duration ${fmtDuration(doc.summary.duration)}`);
       const count = doc.summary.unitCount ?? doc.nodeCount;
@@ -93,7 +96,7 @@ export class Topbar {
     for (const b of this.modeButtons) b.setAttribute('aria-pressed', String(b.dataset.mode === s.mode));
     this.themeBtn.replaceChildren(icon(this.isDark() ? 'sun' : 'moon'));
     this.themeBtn.title = this.isDark() ? 'Switch to the light theme' : 'Switch to the dark theme';
-    this.goto.disabled = !doc;
+    this.goto.disabled = !doc || !!s.compare;
     if (this.menu) this.renderMenu();
   }
 
@@ -130,17 +133,19 @@ export class Topbar {
   renderMenu() {
     const s = this.app.store.get();
     const items = s.files.map((f) => h('div', {
-      class: `item${s.current === f ? ' active' : ''}`,
+      class: `item${s.current === f && !s.compare ? ' active' : ''}`,
       role: 'menuitem',
       onclick: () => {
         this.closeMenu();
         this.app.openEntry(f);
       },
     }, h('span', { class: 'n' }, f.name), h('span', { class: 's' }, humanSize(f.size)), h('span', { class: 'd' }, f.dir ?? '')));
-    const actions = [
-      h('div', { class: 'item action', role: 'menuitem', onclick: () => { this.closeMenu(); document.getElementById('filepick').click(); } },
-        h('span', { class: 'n' }, 'Open a file from this computer…'), h('span', { class: 's' }, 'local')),
-    ];
+    const action = (label, side, fn) => h('div', { class: 'item action', role: 'menuitem', onclick: () => { this.closeMenu(); fn(); } },
+      h('span', { class: 'n' }, label), h('span', { class: 's' }, side));
+    const actions = [action('Open a file from this computer…', 'local', () => document.getElementById('filepick').click())];
+    if (s.compare) actions.push(action('Close the comparison', '', () => this.app.closeCompare()));
+    else if (s.lastCompare) actions.push(action(`Back to the comparison (${s.lastCompare.keys.length} files)`, '', () => this.app.backToCompare()));
+    actions.push(action(s.compare ? 'Change the compared files…' : 'Compare versions of a video…', 'side by side', () => this.app.pickCompare()));
     if (s.server) {
       actions.push(h('div', {
         class: 'item action',
