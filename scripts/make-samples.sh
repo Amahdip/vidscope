@@ -129,6 +129,14 @@ run flv-vp9-aac.flv $V2 $A2 -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -c:a 
 run flv-av1-aac.flv $V2 $A2 -c:v libsvtav1 -preset 12 -c:a aac
 run flv-sorenson-mp3.flv $V2 $A2 -c:v flv -c:a libmp3lame -ar 44100
 
+# Raw elementary streams: the encoder's output with no container
+run es-h264.h264 $V $H264 -f h264
+# Baseline has no B-frames, so x264 uses picture order count type 2 (display order = decoding order).
+run es-h264-baseline.264 $V -c:v libx264 -preset veryfast -profile:v baseline -pix_fmt yuv420p -g 50 -f h264
+run es-hevc.hevc $V -c:v libx265 -preset ultrafast -x265-params log-level=error:keyint=50:repeat-headers=1:aud=1 -f hevc
+run es-hevc-notiming.265 $V2 -c:v libx265 -preset ultrafast -x265-params log-level=error:vui-timing-info=0 -f hevc
+run es-mpeg2.m2v $V -c:v mpeg2video -q:v 5 -g 12 -bf 2 -f mpeg2video
+
 # A small bitrate ladder, converted from one source the way streaming services do (Compare view).
 # The versions share a 1 s GOP with no scene-cut key frames, so their key frames line up; the
 # -g 40 one does not. The remux copies the source's video and audio without re-encoding.

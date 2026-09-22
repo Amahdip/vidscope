@@ -137,6 +137,11 @@ frame's own bytes and `samples.ends[i]` gives the byte after its last one. Forma
 arrays next to these (TS adds `pts`, `pesIndex`, `firstInPes` and `rai`, plus a `track.pes` table);
 the UI ignores arrays it does not know.
 
+A format with no timestamps at all (a raw elementary stream) builds them: decoding times one frame
+duration apart from the frame rate the stream states, and presentation offsets (`cto`) from the
+display order the bitstream gives (the POC in H.264/HEVC slice headers, the temporal reference in
+MPEG-2), so the Frames and Bitrate views work the same way for it.
+
 When the frame list needs a scan of the whole file (Matroska clusters, TS packets, FLV tags,
 an AVI without idx1), keep `open()` fast and implement `async loadSamples(onProgress)` on the doc:
 it fills `track.samples` (and anything else that needs the full scan). The UI calls it once, in the
