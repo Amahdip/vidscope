@@ -41,7 +41,8 @@ const ICONS = {
 
 export function icon(name) {
   const span = document.createElement('span');
-  span.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] ?? ''}</svg>`;
+  // 1em square by default, so an icon matches the text around it wherever it is used.
+  span.innerHTML = `<svg width="1em" height="1em" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] ?? ''}</svg>`;
   return span.firstChild;
 }
 
