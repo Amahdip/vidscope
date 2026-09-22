@@ -189,6 +189,9 @@ code, .mono { font-family: var(--mono); }
   min-height: 48px;
   background: var(--bg-1);
   flex-wrap: nowrap;
+  /* A grid item: without this its content (a long file name and summary) sets its minimum width
+     and pushes the page wider than the window instead of shortening the summary with an ellipsis. */
+  min-width: 0;
 }
 .top-right { flex: none; }
 @media (max-width: 1440px) {
