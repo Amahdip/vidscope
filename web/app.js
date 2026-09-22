@@ -15,6 +15,7 @@ import { LeftPane } from './ui/leftpane.js';
 import { CenterPane } from './ui/centerpane.js';
 import { RightPane } from './ui/rightpane.js';
 import { Welcome } from './ui/welcome.js';
+import { CompareView, openComparePicker } from './ui/compare.js';
 
 const store = createStore({
   files: [],
@@ -32,6 +33,8 @@ const store = createStore({
   centerTab: loadPref('centerTab', 'bytes'),
   rightTab: 'inspector',
   samplesReady: false,
+  compare: null, // { keys: [file keys], ref: key } while comparing versions of a video
+  lastCompare: null, // the comparison left to inspect one of its files
 });
 
 let seq = 0;
@@ -93,15 +96,26 @@ const app = {
     }
   },
 
-  addLocalFiles(fileList) {
+  /** Add files chosen or dropped by the user; opens the first one, or adds them to the comparison. */
+  addLocalFiles(fileList, { open = true } = {}) {
     const added = [];
     for (const file of fileList) {
       const entry = { kind: 'local', key: `l${++localCount}`, name: file.name, size: file.size, file, dir: 'local file' };
       added.push(entry);
     }
-    if (!added.length) return;
+    if (!added.length) return added;
     store.set({ files: [...store.get().files, ...added] });
-    this.openEntry(added[0]);
+    const cmp = store.get().compare;
+    if (open && cmp) this.openCompare([...cmp.keys, ...added.map((e) => e.key)], cmp.ref);
+    else if (open) this.openEntry(added[0]);
+    return added;
+  },
+
+  /** The byte source of a file entry: the local server, or a file from this computer. */
+  sourceFor(entry) {
+    return entry.kind === 'server'
+      ? new HttpSource(`api/files/${entry.id}/data`, entry.size, entry.name)
+      : new BlobSource(entry.file, entry.name);
   },
 
   async openPath(path) {
@@ -117,17 +131,20 @@ const app = {
     if (entry) await this.openEntry(entry);
   },
 
-  async openEntry(entry, { hash } = {}) {
+  /**
+   * Open a file in the byte viewer. `doc` is an already opened document of it (from the
+   * comparison), with its frames indexed.
+   */
+  async openEntry(entry, { hash, doc: opened = null } = {}) {
     const my = ++seq;
     hideTip();
-    if (store.get().doc) cancelFrameScans(store.get().doc);
-    store.set({ current: entry, loading: { name: entry.name, done: 0, total: entry.size }, error: null });
-    const raw = entry.kind === 'server'
-      ? new HttpSource(`api/files/${entry.id}/data`, entry.size, entry.name)
-      : new BlobSource(entry.file, entry.name);
+    const prev = store.get().doc;
+    if (prev && prev !== opened && !this.compareView?.holds(prev)) cancelFrameScans(prev);
+    const cmp = store.get().compare;
+    store.set({ current: entry, loading: opened ? null : { name: entry.name, done: 0, total: entry.size }, error: null, compare: null, lastCompare: cmp ?? store.get().lastCompare });
     let lastTick = 0;
     try {
-      const doc = await openDocument(raw, {
+      const doc = opened ?? await openDocument(this.sourceFor(entry), {
         onProgress: (done, total) => {
           const now = performance.now();
           if (now - lastTick < 80 || my !== seq) return;
@@ -137,10 +154,10 @@ const app = {
       });
       if (my !== seq) return;
       setTipFileSize(doc.size);
-      store.set({ doc, loading: null, level: doc.root, sel: null, samplesReady: !doc.loadSamples, docVersion: 0 });
+      store.set({ doc, loading: null, level: doc.root, sel: null, samplesReady: !doc.loadSamples || !!opened, docVersion: 0 });
       document.title = `${entry.name} — Vidscope`;
       this.updateUrl(entry);
-      if (doc.loadSamples) {
+      if (doc.loadSamples && !opened) {
         doc.loadSamples((done, total) => {
           if (my === seq) store.set({ loading: { name: entry.name, done, total, phase: 'indexing frames' } });
         }).then(() => {
@@ -163,11 +180,61 @@ const app = {
     }
   },
 
-  updateUrl(entry) {
+  updateUrl(entry = store.get().current) {
     const url = new URL(location.href);
     if (entry?.kind === 'server') url.searchParams.set('file', entry.id);
     else url.searchParams.delete('file');
-    history.replaceState(null, '', url);
+    // A comparison of files from the server can be bookmarked: ?compare=3,4,5&ref=3
+    const cmp = store.get().compare;
+    const ids = (cmp?.keys ?? []).map((k) => store.get().files.find((f) => f.key === k)).filter((f) => f?.kind === 'server').map((f) => f.id);
+    if (cmp && ids.length) {
+      url.searchParams.set('compare', ids.join(','));
+      const ref = store.get().files.find((f) => f.key === cmp.ref);
+      if (ref?.kind === 'server') url.searchParams.set('ref', ref.id);
+      else url.searchParams.delete('ref');
+    } else {
+      url.searchParams.delete('compare');
+      url.searchParams.delete('ref');
+    }
+    history.replaceState(null, '', url.toString().replace(/%2C/g, ','));
+  },
+
+  // ------------------------------------------------------------ comparing versions
+
+  /** Compare files (keys of store.files) with the reference `ref`. */
+  openCompare(keys, ref = keys[0]) {
+    hideTip();
+    store.set({ compare: { keys, ref: keys.includes(ref) ? ref : keys[0] }, lastCompare: null });
+    document.title = 'Compare versions — Vidscope';
+    this.updateUrl();
+  },
+
+  closeCompare() {
+    const cmp = store.get().compare;
+    if (!cmp) return;
+    store.set({ compare: null, lastCompare: cmp });
+    document.title = store.get().current ? `${store.get().current.name} — Vidscope` : 'Vidscope';
+    this.updateUrl();
+  },
+
+  /** Back to the comparison that was left to inspect a file. */
+  backToCompare() {
+    const cmp = store.get().lastCompare;
+    if (cmp) this.openCompare(cmp.keys, cmp.ref);
+  },
+
+  pickCompare() {
+    openComparePicker(this);
+  },
+
+  /** Leave the comparison to look at one of its files (and one of its frames) in the byte viewer. */
+  async inspectCompared(entry, doc, { track = null, sample = null } = {}) {
+    if (!entry) return;
+    await this.openEntry(entry, { doc });
+    if (track && sample !== null) {
+      store.set({ centerTab: 'frames' });
+      await this.selectSample(track, sample);
+    }
   },
 
   pushHash(offset) {
@@ -384,6 +451,7 @@ function installKeys() {
     const tag = e.target?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.metaKey || e.ctrlKey || e.altKey) return;
     const s = store.get();
+    if (s.compare && !['?', '1', '2', '3'].includes(e.key)) return;
     switch (e.key) {
       case 'g':
       case '/':
@@ -479,8 +547,11 @@ async function boot() {
     if (changed.has('leftTab')) savePref('leftTab', s.leftTab);
     if (changed.has('centerTab')) savePref('centerTab', s.centerTab);
     const empty = !s.doc;
-    document.getElementById('app').classList.toggle('empty', empty);
-    document.getElementById('welcome').hidden = !empty;
+    const el = document.getElementById('app');
+    el.classList.toggle('empty', empty);
+    el.classList.toggle('comparing', !!s.compare);
+    document.getElementById('welcome').hidden = !empty || !!s.compare;
+    document.getElementById('compare').hidden = !s.compare;
   });
 
   app.topbar = new Topbar(document.getElementById('topbar'), app);
@@ -490,6 +561,7 @@ async function boot() {
   app.hex = app.center.hex;
   app.right = new RightPane(document.getElementById('right'), app);
   app.welcome = new Welcome(document.getElementById('welcome'), app);
+  app.compareView = new CompareView(document.getElementById('compare'), app);
   document.getElementById('app').classList.add('empty');
   document.getElementById('welcome').hidden = false;
 
@@ -499,8 +571,15 @@ async function boot() {
 
   await app.loadServerFiles();
   const files = store.get().files;
-  const want = new URL(location.href).searchParams.get('file');
-  const entry = files.find((f) => f.kind === 'server' && String(f.id) === want) ?? (want === null ? files[0] : null);
+  const params = new URL(location.href).searchParams;
+  const byId = (id) => files.find((f) => f.kind === 'server' && String(f.id) === id);
+  const cmp = (params.get('compare') ?? '').split(',').map(byId).filter(Boolean);
+  if (cmp.length) {
+    app.openCompare(cmp.map((f) => f.key), byId(params.get('ref') ?? '')?.key ?? cmp[0].key);
+    return;
+  }
+  const want = params.get('file');
+  const entry = byId(want) ?? (want === null ? files[0] : null);
   if (entry) await app.openEntry(entry);
 }
 
