@@ -391,9 +391,10 @@ export function keyAlignment(items, ref) {
 
 /**
  * Segment lengths every version could be cut into: for each length, how many segment
- * boundaries miss a key frame in some version (0 means the files can be cut there).
+ * boundaries miss a key frame in some version (0 means the files can be cut there). The lengths
+ * are the usual ones: 2 s (low latency), 4 and 6 s (HLS guidelines), 5 and 10 s (5 s GOPs).
  */
-export function segmentFit(items, ref, lengths = [2, 4, 6, 10]) {
+export function segmentFit(items, ref, lengths = [2, 4, 5, 6, 10]) {
   const tol = tolerance(items);
   const list = items.filter((it, k) => k !== ref && it?.keyTimes?.length);
   if (!list.length) return [];

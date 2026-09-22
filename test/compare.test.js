@@ -90,6 +90,16 @@ test('key frames line up when they are within half a frame', () => {
   assert.deepEqual(fit.map((f) => [f.len, f.bounds, f.missing]), [[2, 2, 0], [4, 1, 0]]);
 });
 
+test('a 5 s GOP ladder fits 5 and 10 s segments, not 2, 4 or 6 s', () => {
+  // Key frames every 5 s over a minute, the same in every version (as a fixed -g 5 s encode gives).
+  const keys = Array.from({ length: 12 }, (_, k) => k * 5);
+  const item = () => ({ fps: 50, keyTimes: Float64Array.from(keys), duration: 60 });
+  const fit = segmentFit([item(), item(), item()], 0);
+  assert.deepEqual(fit.map((f) => f.len), [2, 4, 5, 6, 10], 'the lengths checked by default');
+  const works = Object.fromEntries(fit.map((f) => [f.len, f.missing === 0]));
+  assert.deepEqual(works, { 2: false, 4: false, 5: true, 6: false, 10: true });
+});
+
 test('the ladder: what each conversion changed and lost', { skip: !haveLadder }, async () => {
   const L = await ladder();
   const items = [L.source, L['270p'], L['180p'], L.remux];
