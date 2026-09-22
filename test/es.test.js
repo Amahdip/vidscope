@@ -46,6 +46,13 @@ for (const [name, codec] of STREAMS) {
     // the samples were made at (also Vidscope's default for the stream without VUI timing).
     const [num, den] = st.r_frame_rate.split('/').map(Number);
     assert.ok(Math.abs(doc.tracks[0].fps - (codec === 'mpeg2v' ? num / den : 25)) < 1e-6, `frame rate ${doc.tracks[0].fps} (FFmpeg r_frame_rate ${st.r_frame_rate})`);
+    // Times: FFmpeg only knows them for MPEG-2 (decoding times from 0, and presentation times of
+    // the frames its parser can place); where it has one, it must match ours.
+    const ts = doc.tracks[0].timescale;
+    probe(name, ['-show_entries', 'packet=pts_time,dts_time']).packets.forEach((p, i) => {
+      if (p.dts_time !== undefined) assert.ok(Math.abs(s.dts[i] / ts - Number(p.dts_time)) < 1e-6, `frame ${i + 1} decoding time`);
+      if (p.pts_time !== undefined) assert.ok(Math.abs((s.dts[i] + (s.cto?.[i] ?? 0)) / ts - Number(p.pts_time)) < 1e-6, `frame ${i + 1} presentation time`);
+    });
     const frames = probe(name, ['-show_frames', '-show_entries', 'frame=pkt_pos,pict_type']).frames;
     const byOffset = new Map(Array.from(s.offsets, (o, i) => [o, i]));
     const order = Array.from({ length: s.count }, (_, i) => i).sort((a, b) => doc.scan.rank[a] - doc.scan.rank[b]);

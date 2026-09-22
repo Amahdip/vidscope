@@ -80,14 +80,16 @@ class EsDoc extends Doc {
     this.rate = rate;
     const n = scan.count;
     const dur = rate.duration;
-    // No timestamps in the stream: frames are one frame duration apart in decoding order, and
-    // shown in the order their POC (or temporal reference) gives.
+    // No timestamps in the stream: frames are one frame duration apart in decoding order, from 0
+    // as in FFmpeg's raw demuxers, and shown in the order their POC (or temporal reference)
+    // gives. With B-frames the first picture is then shown a frame or two after 0, as FFmpeg
+    // reports it too.
     let shift = 0;
     for (let i = 0; i < n; i++) shift = Math.max(shift, i - scan.rank[i]);
     const dts = new Float64Array(n);
     const cto = scan.reordered ? new Int32Array(n) : null;
     for (let i = 0; i < n; i++) {
-      dts[i] = (i - shift) * dur;
+      dts[i] = i * dur;
       if (cto) cto[i] = (scan.rank[i] - i + shift) * dur;
     }
     t.timescale = rate.timescale;
