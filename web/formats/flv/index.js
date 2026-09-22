@@ -56,6 +56,13 @@ class FlvDoc extends Doc {
     return changed;
   }
 
+  frameCodec(t) {
+    const cfg = t.configs?.[0]?.cfg;
+    if (t.family) return { family: t.family, lengthSize: cfg?.lengthSize ?? 4, annexB: false, state: cfg?.state ?? null };
+    const legacy = { 2: 'h263s', 4: 'vp6', 5: 'vp6a' }[t.h?.codecId];
+    return t.kind === 'video' && legacy ? { family: legacy } : null;
+  }
+
   /** The decoder configuration in effect for a frame (the last one sent before it). */
   configFor(t, offset) {
     let cfg = null;

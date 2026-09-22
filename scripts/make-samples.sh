@@ -137,6 +137,17 @@ run es-hevc.hevc $V -c:v libx265 -preset ultrafast -x265-params log-level=error:
 run es-hevc-notiming.265 $V2 -c:v libx265 -preset ultrafast -x265-params log-level=error:vui-timing-info=0 -f hevc
 run es-mpeg2.m2v $V -c:v mpeg2video -q:v 5 -g 12 -bf 2 -f mpeg2video
 
+# A small bitrate ladder, converted from one source the way streaming services do (Compare view).
+# The versions share a 1 s GOP with no scene-cut key frames, so their key frames line up; the
+# -g 40 one does not. The remux copies the source's video and audio without re-encoding.
+run ladder-source.mkv $V $A -i "$TMP/subs.srt" -map 0:v -map 1:a -map 2:s -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p -g 100 \
+  -c:a aac -b:a 192k -ac 6 -c:s srt
+LADDER="-c:v libx264 -preset veryfast -pix_fmt yuv420p -g 25 -keyint_min 25 -sc_threshold 0 -c:a aac -ac 2 -sn -movflags +faststart"
+run ladder-270p.mp4 -i samples/ladder-source.mkv $LADDER -vf scale=-2:270 -crf 26 -maxrate 500k -bufsize 1000k -b:a 96k
+run ladder-180p.mp4 -i samples/ladder-source.mkv $LADDER -vf scale=-2:180 -crf 28 -maxrate 250k -bufsize 500k -b:a 64k
+run ladder-180p-gop40.mp4 -i samples/ladder-source.mkv $LADDER -vf scale=-2:180 -crf 28 -g 40 -keyint_min 40 -b:a 64k
+run ladder-remux.mp4 -i samples/ladder-source.mkv -map 0:v -map 0:a -c copy
+
 echo "Done: $made files in samples/"
 if [ -n "$failed" ]; then
   echo "Skipped (your FFmpeg build lacks an encoder or muxer):$failed"

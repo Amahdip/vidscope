@@ -243,29 +243,7 @@ export async function insights(doc) {
     add('info', 'Tracks', `${t.label}: ${t.codecName}`, bits.join(' · '), { node: t.node, facts: t.codecString ? [['codec string', t.codecString]] : undefined });
 
     if (t.kind === 'video' && s?.count > 1) {
-      if (s.key) {
-        const keys = [];
-        for (let i = 0; i < s.count; i++) if (s.key[i]) keys.push(i);
-        if (keys.length > 1 && t.timescale) {
-          let maxGap = 0;
-          for (let i = 1; i < keys.length; i++) maxGap = Math.max(maxGap, keys[i] - keys[i - 1]);
-          const lastGap = s.count - keys[keys.length - 1];
-          maxGap = Math.max(maxGap, lastGap);
-          const fps = t.fps || 25;
-          const avg = s.count / keys.length;
-          const level = maxGap / fps > 10 ? 'warn' : 'info';
-          add(level, 'Tracks', `${t.label}: a key frame every ${fmtNum(avg, 1)} frames (${fmtNum(avg / fps, 2)} s)`, level === 'warn'
-            ? 'Some key frames are more than 10 seconds apart. Seeking lands on the previous key frame, so it becomes slow or imprecise, and HLS/DASH segments cannot be cut shorter than the gap.'
-            : 'A player can only start decoding at a key frame (sync sample). The gap between them sets how precisely and quickly it can seek.', {
-            facts: [['key frames', fmtInt(keys.length)], ['longest gap', `${fmtInt(maxGap)} frames (${fmtNum(maxGap / fps, 2)} s)`]],
-            node: t.node.find('stss') ?? t.node,
-          });
-        } else if (keys.length === 1) {
-          add('info', 'Tracks', `${t.label}: only one key frame`, 'The whole track can only be decoded from its first frame, so seeking means decoding from the start.', { node: t.node.find('stss') });
-        }
-      } else {
-        add('info', 'Tracks', `${t.label}: every frame is a key frame`, 'There is no sync sample table, which means every sample can be decoded on its own (intra-only video, such as ProRes or MJPEG, or a still image).', { node: t.node });
-      }
+      // Key frame intervals and GOPs are reported for every format by web/core/frames.js.
       if (s.cto) add('info', 'Tracks', `${t.label}: uses B-frames`, 'Frames are stored in decoding order, which differs from display order. ctts (or trun) holds each frame’s composition offset, and an edit list usually hides the resulting start delay.', { node: t.node.find('ctts') ?? t.node });
       if (t.vfr) add('info', 'Timing', `${t.label}: variable frame rate`, 'Frame durations differ (stts has several entries). Common for phone and screen recordings; some editors and older players assume a constant rate and drift.', { node: t.node.find('stts') });
     }

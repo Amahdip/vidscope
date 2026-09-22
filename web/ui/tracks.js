@@ -3,6 +3,9 @@
 import { h, clear } from './dom.js';
 import { fmtInt, fmtDuration, fmtBitrate, fmtNum, hex, humanSize } from '../core/util.js';
 import { showTip, hideTip } from './tooltip.js';
+import { frameTypes, AUTO_SCAN_BYTES } from '../core/frames.js';
+import { frameLabel } from '../codecs/frametype.js';
+import { paint, chipClass } from './frames.js';
 
 const ROW = 22;
 const CHART_H = 112;
@@ -13,6 +16,7 @@ export class TracksView {
     this.app = app;
     this.open = new Set();
     this.charts = [];
+    this.unsubs = [];
     app.store.subscribe((s, ch) => {
       if (ch.has('doc')) this.open = new Set(s.doc?.tracks?.length === 1 ? [0] : []);
       if ((ch.has('doc') || ch.has('samplesReady') || ch.has('theme')) && s.leftTab === 'tracks') this.render();
@@ -25,6 +29,8 @@ export class TracksView {
     const s = this.app.store.get();
     clear(this.el);
     this.charts = [];
+    this.unsubs.forEach((u) => u());
+    this.unsubs = [];
     const doc = s.doc;
     if (!doc) return;
     const wrap = h('div', { class: 'trk' });
@@ -55,10 +61,26 @@ export class TracksView {
       const body = h('div', { class: 'tb2' });
       body.append(h('dl', { class: 'kv' }, (t.props ?? []).flatMap(([k, v]) => [h('dt', null, k), h('dd', null, v)])));
       if (t.samples?.count) {
-        const chart = new FrameChart(t, this.app);
+        const ft = t.kind === 'video' ? frameTypes(s.doc, t) : null;
+        const chart = new FrameChart(t, this.app, ft?.supported ? ft : null);
         this.charts.push(chart);
         body.append(chart.el);
-        body.append(this.sampleList(t, s));
+        const list = this.sampleList(t, s, ft?.supported ? ft : null);
+        body.append(list);
+        if (ft?.ctx && !ft.complete) {
+          // Colour the chart and fill the type column as frame headers are read.
+          let queued = false;
+          this.unsubs.push(ft.onChange(() => {
+            if (queued) return;
+            queued = true;
+            requestAnimationFrame(() => {
+              queued = false;
+              chart.draw();
+              list.repaint?.();
+            });
+          }));
+          if (ft.scanBytes <= AUTO_SCAN_BYTES) ft.ensure();
+        }
       } else if (this.app.store.get().doc.loadSamples && !s.samplesReady) {
         body.append(h('p', { class: 'prose' }, 'Indexing frames…'));
       } else {
@@ -78,15 +100,15 @@ export class TracksView {
     if (this.open.has(i)) this.app.select(t.node, { from: 'tracks', scroll: false });
   }
 
-  sampleList(t, s) {
+  sampleList(t, s, ft) {
     const sm = t.samples;
     const ts = t.timescale || 1;
     const hasPts = !!sm.cto;
-    const cols = ['#', 'offset', 'size', hasPts ? 'decode' : 'time', hasPts ? 'display' : null, 'key'].filter(Boolean);
-    const template = `52px 92px 72px 84px ${hasPts ? '84px ' : ''}34px`;
+    const cols = ['#', 'offset', 'size', hasPts ? 'decode' : 'time', hasPts ? 'display' : null, ft ? 'type' : 'key'].filter(Boolean);
+    const template = `52px 92px 72px 84px ${hasPts ? '84px ' : ''}${ft ? '44px' : '34px'}`;
     const selIdx = s.sel?.detail?.track === t ? s.sel.detail.sample : -1;
     const wrap = h('div', { class: 'tbl slist' });
-    wrap.append(h('div', { class: 'thead', style: { gridTemplateColumns: template } }, cols.map((c) => h('div', null, c))));
+    wrap.append(h('div', { class: 'thead', style: { gridTemplateColumns: template } }, cols.map((c) => h('div', c === 'type' ? { 'data-tip': 'Frame type: I (complete picture), P (predicted from earlier frames), B (also uses a later frame; lower-case b = no other frame refers to it). A line above the letter marks a key frame.' } : null, c))));
     const body = h('div', { class: 'tbody' });
     body.style.height = `${Math.min(sm.count, 12) * ROW + 2}px`;
     const spacer = h('div', { style: { position: 'relative', height: `${sm.count * ROW}px` } });
@@ -104,13 +126,18 @@ export class TracksView {
           h('div', null, fmtDuration(sm.dts[i] / ts)),
         ];
         if (hasPts) cells.push(h('div', null, fmtDuration((sm.dts[i] + sm.cto[i]) / ts)));
-        cells.push(h('div', { 'aria-label': key ? 'key frame' : '' }, key ? '●' : ''));
+        if (ft) {
+          const known = ft.have[i] && ft.type[i];
+          cells.push(h('div', { 'data-tip': known ? `${frameLabel(ft.family, ft.type[i], ft.flags[i])}${key ? '\nkey frame: decoding can start here' : ''}` : key ? 'key frame' : 'type not read yet' },
+            known ? h('span', { class: `fl ${chipClass(ft.type[i], ft.flags[i])}${key ? ' key' : ''}` }, ft.letter(i)) : key ? '●' : '·'));
+        } else cells.push(h('div', { 'aria-label': key ? 'key frame' : '' }, key ? '●' : ''));
         spacer.append(h('div', { class: `trw${i === selIdx ? ' sel' : ''}`, style: { top: `${i * ROW}px`, gridTemplateColumns: template }, onclick: () => this.app.selectSample(t, i) }, cells));
       }
     };
     body.addEventListener('scroll', paint);
+    wrap.repaint = paint;
     wrap.append(body);
-    wrap.append(h('div', { class: 'tfoot' }, `${fmtInt(sm.count)} samples in decoding order · ● key frame · click one to see its bytes`));
+    wrap.append(h('div', { class: 'tfoot' }, `${fmtInt(sm.count)} samples in decoding order · ${ft ? 'I/P/B frame type' : '● key frame'} · click one to see its bytes`));
     requestAnimationFrame(() => {
       if (selIdx >= 0) body.scrollTop = Math.max(0, selIdx * ROW - ROW * 3);
       paint();
@@ -125,9 +152,10 @@ function kindCat(kind) {
 
 /** Frame sizes in decoding order: one column per frame, or per pixel bin when there are many. */
 class FrameChart {
-  constructor(track, app) {
+  constructor(track, app, ft = null) {
     this.t = track;
     this.app = app;
+    this.ft = ft;
     this.focus = -1;
     this.canvas = h('canvas', {
       tabindex: '0',
@@ -136,9 +164,15 @@ class FrameChart {
     });
     const s = track.samples;
     const ts = track.timescale || 1;
-    const legend = h('div', { class: 'chips' },
-      h('span', { class: 'legend' }, h('i', { style: { background: 'var(--viz-frame)' } }), 'frames'),
-      track.kind === 'video' ? h('span', { class: 'legend' }, h('i', { style: { background: 'var(--viz-key)' } }), 'key frames') : null);
+    const legend = ft
+      ? h('div', { class: 'chips' },
+        h('span', { class: 'legend', 'data-tip': 'I-frame: a complete picture' }, h('i', { style: { background: 'var(--ft-i)' } }), 'I'),
+        h('span', { class: 'legend', 'data-tip': 'P-frame: predicted from earlier frames' }, h('i', { style: { background: 'var(--ft-p)' } }), 'P'),
+        h('span', { class: 'legend', 'data-tip': 'B-frame: also uses a later frame (paler: no other frame refers to it)' }, h('i', { style: { background: 'var(--ft-b)' } }), 'B'),
+        h('button', { class: 'chip', 'data-tip': 'Open the Frames view: GOPs, decoding and display order, and explanations', onclick: () => app.store.set({ centerTab: 'frames' }) }, 'Frames view'))
+      : h('div', { class: 'chips' },
+        h('span', { class: 'legend' }, h('i', { style: { background: 'var(--viz-frame)' } }), 'frames'),
+        track.kind === 'video' ? h('span', { class: 'legend' }, h('i', { style: { background: 'var(--viz-key)' } }), 'key frames') : null);
     this.el = h('div', { class: 'chart' },
       h('div', { class: 'cap' }, h('span', null, `Sample size, ${fmtInt(s.count)} samples`)),
       legend,
@@ -203,6 +237,8 @@ class FrameChart {
     this.layout = { out, perSample, w };
     const colW = w / out.length;
     const barW = Math.max(1, Math.min(24, colW - (colW >= 4 ? 2 : 0)));
+    const ft = this.ft;
+    const fcol = ft ? { '--ft-i': col('--ft-i'), '--ft-p': col('--ft-p'), '--ft-b': col('--ft-b'), '--ft-o': col('--ft-o') } : null;
     // recessive chrome: a hairline at the maximum, the baseline, and the max label in muted ink
     g.fillStyle = col('--viz-grid');
     g.fillRect(0, top, w, 1);
@@ -219,6 +255,11 @@ class FrameChart {
       const hgt = Math.max(1, ((base - top) * b.max) / max);
       g.globalAlpha = this.hover >= 0 && this.hover !== i ? 0.55 : 1;
       g.fillStyle = b.key ? col('--viz-key') : col('--viz-frame');
+      if (ft && ft.have[b.best] && ft.type[b.best]) {
+        const [c, alpha] = paint(ft.type[b.best], ft.flags[b.best]);
+        g.fillStyle = fcol[c];
+        g.globalAlpha *= alpha;
+      }
       if (barW >= 8) {
         roundTop(g, x, base - hgt, barW, hgt, 4);
       } else {
@@ -244,7 +285,9 @@ class FrameChart {
     const s = this.t.samples;
     const ts = this.t.timescale || 1;
     const i = b.best;
-    const lines = [`${fmtInt(s.sizes[i])} bytes`, `sample ${fmtInt(i + 1)}${!s.key || s.key[i] ? ' · key frame' : ''}`, `${fmtDuration(s.dts[i] / ts)} decode time`];
+    const ft = this.ft;
+    const type = ft && ft.have[i] && ft.type[i] ? ` · ${frameLabel(ft.family, ft.type[i], ft.flags[i])}` : '';
+    const lines = [`${fmtInt(s.sizes[i])} bytes${type}`, `sample ${fmtInt(i + 1)}${!s.key || s.key[i] ? ' · key frame' : ''}`, `${fmtDuration(s.dts[i] / ts)} decode time`];
     if (b.z - b.a > 1) lines.push(`largest of samples ${fmtInt(b.a + 1)}–${fmtInt(b.z)}`);
     return lines.join('\n');
   }

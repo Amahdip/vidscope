@@ -162,6 +162,27 @@ frames a payload holds, and `overlay`/`detailAt`/`ensureUnits` usually look fram
 (MPEG-4 Part 2 headers), and `parseSample(cfg, bytes, start, end, base)` which splits a frame into
 NAL units / OBUs / audio frames with decoded headers. Codec names: `CODEC_NAMES`.
 
+## Frame types
+
+The Frames view, the frame-type column of the Tracks tab and the GOP insights classify every
+video frame (I, P, B, reference or not, entry point or not) from its first bytes, using
+`web/codecs/frametype.js` and `web/core/frames.js`. A format only has to describe where a frame's
+codec data is:
+
+- `frameCodec(t)` returns `{ family, lengthSize, annexB, encrypted, state }` for track `t`. The
+  default reads `t.sampleCfg` (and `t.family`); override it when the codec family or its
+  configuration lives elsewhere (FLV keeps it in the sequence-header tag, Matroska needs the
+  CodecID for MPEG-2 and MPEG-4 Part 2).
+- `framesContiguous` is `true` when frame `i` is the single run `samples.offsets[i]` …
+  `+ sizes[i]`; the scanner then reads many frames per request. MPEG-TS sets it to `false` and
+  implements `frameHead(t, i, n)`, which returns the first `n` bytes of frame `i` reassembled from
+  its packets.
+
+Scanning is incremental and runs in the background (`frameTypes(doc, t).ensure(from, to)`); files
+with more than about 1.5 GB of video are scanned where the user looks, or in full on request.
+GOPs start at the frames the container marks as key frames, so mismatches between the container
+and the bitstream (a key frame that is not an entry point) show up as insights.
+
 ## Details inside payloads
 
 `detailAt(offset)` returns a record the inspector renders:

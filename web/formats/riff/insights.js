@@ -237,28 +237,7 @@ async function readFrame(doc, t, i, max = 1 << 20) {
 async function videoInsights(doc, ctx, t, out) {
   const s = t.samples;
   if (!s || !s.count) return;
-  const c = s.clock;
-  const fps = c.rate / c.scale;
-  // Key frame interval
-  if (s.key) {
-    const gaps = [];
-    let prev = -1;
-    for (let i = 0; i < s.count; i++) if (s.key[i]) {
-      if (prev >= 0) gaps.push(i - prev);
-      prev = i;
-    }
-    const keys = t.keyframes ?? 0;
-    if (keys === s.count) {
-      out.push({ level: 'info', group: 'Encoding', title: `${t.label}: every frame is a key frame`, text: `${t.codecName} with only key frames (intra-only, like Motion JPEG or DV): perfect for editing and seeking, at the cost of a much higher bitrate.` });
-    } else if (keys <= 1) {
-      const long = s.count / fps > 10;
-      out.push({ level: long ? 'warn' : 'info', group: 'Encoding', title: `${t.label}: a single key frame`, text: `Only the first frame is a key frame${long ? '' : ' (normal for a clip shorter than the encoder\'s key frame interval)'}. Seeking has to decode from the start of the file, and a damaged frame corrupts the rest of the video.` });
-    } else {
-      const avg = gaps.reduce((a, b) => a + b, 0) / gaps.length;
-      const max = Math.max(...gaps);
-      out.push({ level: max / fps > 10 ? 'warn' : 'info', group: 'Encoding', title: `${t.label}: key frame every ${fmtNum(avg / fps, 2)} s`, text: `${fmtInt(keys)} key frames, on average every ${fmtNum(avg, 1)} frames (${fmtNum(avg / fps, 2)} s), at most ${fmtInt(max)} frames (${fmtNum(max / fps, 2)} s) apart. A player seeks to the key frame before the target and decodes forward from there.` });
-    }
-  }
+  // Key frame intervals and GOPs are reported for every format by web/core/frames.js.
   if (t.emptyChunks) {
     out.push({ level: 'info', group: 'Timing', title: `${t.label}: ${fmtInt(t.emptyChunks)} empty chunk${t.emptyChunks === 1 ? '' : 's'}`, text: `Zero-byte '${t.chunkPrefix}dc' chunks are placeholders for frames that were dropped or repeated. Because AVI has no timestamps, a missing frame must still occupy a position in the stream, or everything after it would play early.` });
   }

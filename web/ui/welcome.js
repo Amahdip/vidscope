@@ -10,7 +10,7 @@ export class Welcome {
     this.el = el;
     this.app = app;
     app.store.subscribe((s, ch) => {
-      if (['files', 'doc', 'error', 'loading', 'server'].some((k) => ch.has(k))) this.render();
+      if (['files', 'doc', 'error', 'loading', 'server', 'lastCompare'].some((k) => ch.has(k))) this.render();
     });
     this.render();
   }
@@ -35,6 +35,10 @@ export class Welcome {
       zone,
       h('div', { class: 'formats' }, FORMATS.map((f) => h('span', { class: 'chip' }, f))));
     if (s.error) box.append(h('div', { class: 'err' }, s.error));
+    box.append(h('div', { class: 'wcompare' },
+      h('button', { class: 'btn', onclick: () => this.app.pickCompare(), 'data-tip': 'Put a source video next to the versions converted from it (720p, 480p...): what each conversion changed, the bitrate ladder, key frame alignment, and the frame each version shows at any moment.' }, 'Compare versions of a video…'),
+      s.lastCompare ? h('button', { class: 'btn', onclick: () => this.app.backToCompare() }, `Back to the comparison (${s.lastCompare.keys.length} files)`) : null,
+      h('span', null, 'the source next to its converted profiles, down to single frames')));
     const files = s.files;
     if (files.length) {
       const list = h('div', { class: 'files' }, h('h4', null, s.server ? 'Files from the command line' : 'Files'));
