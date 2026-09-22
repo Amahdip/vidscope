@@ -3,6 +3,7 @@
 
 import { h, clear, copyText, icon } from './dom.js';
 import { hex } from '../core/util.js';
+import { frameInsights } from '../core/frames.js';
 import { encodingInsights } from '../core/encoding.js';
 
 const ICONS = { good: '✓', info: 'i', warn: '!', bad: '✕' };
@@ -40,13 +41,16 @@ export class InsightsView {
     clear(this.el);
     this.el.append(h('div', { class: 'empty-state' }, 'Analysing the file…'));
     try {
-      const items = await doc.insights();
-      const shared = await encodingInsights(doc).catch((e) => {
+      // The format's own findings, plus the GOP, frame-type and encoding findings shared by every format.
+      const quiet = (p) => p.catch((e) => {
         console.error(e);
         return [];
       });
+      const [items, frames, shared] = await Promise.all([doc.insights(), quiet(frameInsights(doc)), quiet(encodingInsights(doc))]);
       if (this.doc !== doc || my !== this.seq) return;
-      this.items = [...items, ...shared];
+      // A format may already report the same finding in its own words.
+      const titles = new Set(items.map((i) => i.title));
+      this.items = [...items, ...frames.filter((i) => !titles.has(i.title)), ...shared];
     } catch (e) {
       console.error(e);
       this.items = [{ level: 'bad', group: 'Integrity', title: 'Could not analyse the file', text: e.message }];
