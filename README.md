@@ -4,6 +4,8 @@ See the bytes inside video files. Vidscope maps every byte of a container
 (MP4/MOV, Matroska/WebM, MPEG-TS, AVI/WAV, FLV, raw H.264/HEVC/MPEG-2 streams) to the box, element, field, table entry or
 media frame it belongs to, and explains in plain words what it is for.
 
+![Vidscope with an MP4 file open: the to-scale map of its boxes, the structure tree, the hex view at a video frame, and the inspector explaining that frame and its NAL units field by field](docs/images/overview.webp)
+
 ## Quick start
 
 You need [Node.js](https://nodejs.org) 18 or newer. Nothing else gets installed.
@@ -24,8 +26,10 @@ cd vidscope
 node bin/vidscope.js ~/Movies
 ```
 
-No video at hand? `npm run samples` makes about 50 short test files in every format with
+No video at hand? `npm run samples` makes about 60 short test files in every format with
 FFmpeg, and `npm start` opens them.
+
+## What it shows
 
 - **To-scale map** of the file and of any box you zoom into, plus one card per part so
   even 8-byte boxes are clickable.
@@ -96,6 +100,53 @@ FFmpeg, and `npm start` opens them.
 Everything is parsed in the browser. The server only hands out byte ranges, so opening a
 multi-gigabyte file reads just its headers and index (usually a few megabytes), and the hex
 view reads only what is on screen. Dropped files are never uploaded.
+
+## A look around
+
+**Frames view**: every frame typed from its own header, grouped into GOPs, in decoding order
+next to display order. Here an x264 encode with a 1 s GOP and a B-pyramid.
+
+![The Frames view: frame sizes coloured by type with key frames marked, and the first GOP's frames in decoding order next to display order](docs/images/frames.webp)
+
+**Bitrate view**: bits per second over time, the peaks, bits per pixel, a guess at the rate
+control, and a decoder buffer (VBV) check for a given `-maxrate` and `-bufsize`.
+
+![The Bitrate view: bitrate per second with the average, and the decoder buffer simulation below](docs/images/bitrate.webp)
+
+**Compare versions**: a source next to the versions made from it. Here a 640×360 source with
+5.1 audio and subtitles, a remux and three smaller versions: the remux copied the video and
+audio bit for bit, and every conversion lost the subtitles.
+
+![The Compare page: one card per file, what each conversion changed or lost, and the properties side by side](docs/images/compare.webp)
+
+Key frames over time show whether the versions can be switched between (they can't here: one
+version has a 1.6 s GOP instead of 1 s), and the frame microscope shows what each version
+stores for the same moment.
+
+![Key frames and bitrate of each version over time, the verdict on key frame alignment, and the frame each version shows at 1.6 s](docs/images/compare-keys.webp)
+
+**Pixel microscope**: the pictures decoded in the browser, with one magnifier on the same spot
+of each. The 1080p source keeps the blades of grass, 720p softens them and 360p turns them
+into blocks.
+
+![The pixel microscope: the same frame of a 1080p, 720p and 360p version side by side, each magnified on the same patch of grass](docs/images/pixels.webp)
+
+The difference from the source, with PSNR and SSIM computed as FFmpeg's `psnr` and `ssim`
+filters do, shows where each conversion lost detail.
+
+![The difference view: black where a version matches the source, bright where it differs, with PSNR and SSIM for each](docs/images/pixels-diff.webp)
+
+**Encoding explained** and **Commands**: the encoder's own settings, each one explained, and
+FFmpeg commands filled in for the open file and the selected frame.
+
+<p>
+<img src="docs/images/encoding.webp" width="49%" alt="File insights: the x264 settings stored in the stream, grouped by what they control, each with its meaning">
+<img src="docs/images/commands.webp" width="49%" alt="The Commands tab: ffprobe commands filled in with the file, the selected stream and the selected frame's time">
+</p>
+
+<sub>The pictures above are from <a href="https://peach.blender.org">Big Buck Bunny</a>, © 2008
+Blender Foundation, <a href="https://creativecommons.org/licenses/by/3.0/">CC BY 3.0</a>. The
+other files are test patterns made by <code>npm run samples</code>.</sub>
 
 ## Running it
 
