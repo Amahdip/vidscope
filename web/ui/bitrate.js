@@ -39,7 +39,7 @@ export class BitrateView {
     this.pick = 'all'; // 'all' or a track index
     this.bin = Number(loadPref('bitrateBin', 1)) || 1;
     this.hover = -1;
-    this.vbv = null;
+    this.forgetVbv();
     this.el.classList.add('frames', 'bitrate');
     app.store.subscribe((s, ch) => {
       if (ch.has('doc')) this.setDoc(s.doc);
@@ -52,8 +52,14 @@ export class BitrateView {
   setDoc(doc) {
     this.doc = doc;
     this.pick = 'all';
-    this.vbv = null;
+    this.forgetVbv();
     this.render();
+  }
+
+  /** A result only means something with the settings that produced it: forget them together. */
+  forgetVbv() {
+    this.vbv = null;
+    this.vbvResult = null;
   }
 
   tracks() {
@@ -90,7 +96,7 @@ export class BitrateView {
         class: `chip${this.pick === k ? ' on' : ''}`,
         onclick: () => {
           this.pick = k;
-          this.vbv = null;
+          this.forgetVbv();
           this.render();
         },
         'data-tip': k === 'all' ? 'Stack every track: the total is the bitrate of the whole file' : `Only ${label}`,
@@ -213,7 +219,7 @@ export class BitrateView {
     const { maxrate, bufsize, init } = this.vbv;
     if (!(maxrate > 0 && bufsize > 0)) return;
     const r = simulateVbv(v, { maxrate: maxrate * 1000, bufsize: bufsize * 1000, init: Math.min(100, Math.max(0, init)) / 100 });
-    this.vbvResult = { r, v };
+    this.vbvResult = { r, v, set: this.vbv };
     const s = v.samples;
     const ts = v.timescale || s.timescale || 1;
     clear(this.vbvOut);
@@ -355,10 +361,10 @@ export class BitrateView {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     const css = getComputedStyle(document.documentElement);
     const col = (n) => css.getPropertyValue(n).trim();
-    const { r, v } = res;
+    const { r, v, set } = res;
     const s = v.samples;
     const n = s.count;
-    const cap = this.vbv.bufsize * 1000;
+    const cap = set.bufsize * 1000;
     const top = 16;
     const base = VBV_H - 1;
     const y = (bits) => base - ((base - top) * Math.max(0, bits)) / cap;
@@ -370,7 +376,7 @@ export class BitrateView {
     g.font = `11px ${col('--mono') || 'monospace'}`;
     g.textBaseline = 'bottom';
     g.textAlign = 'right';
-    g.fillText(`full (${fmtInt(this.vbv.bufsize)} kbit)`, w - 2, top - 2);
+    g.fillText(`full (${fmtInt(set.bufsize)} kbit)`, w - 2, top - 2);
     g.textAlign = 'left';
     g.fillText('empty', 2, base - 2);
     // Buffer fullness before and after each frame: a saw-tooth in the video's colour.
