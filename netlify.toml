@@ -1,0 +1,11 @@
+# Vidscope is a static site: web/ is the whole application and needs no build step. Files are
+# read and parsed in the visitor's browser, so the host only ever serves these files.
+# Connect this repository at netlify.com; there is nothing to install or configure further.
+[build]
+  publish = "web"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
