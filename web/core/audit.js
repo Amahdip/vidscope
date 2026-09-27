@@ -11,6 +11,7 @@
 import { summarize, videoCodecName, audioCodecName } from './compare.js';
 import { videoInfo, encoderSei } from './encoding.js';
 import { analyzeFrames } from './frames.js';
+import { simulateVbv } from './bitrate.js';
 import { parseX26x, rateControl } from '../codecs/encoders.js';
 import { checkLevel } from '../codecs/levels.js';
 import { fmtInt, fmtNum, fmtBitrate, fmtDuration, plural } from './util.js';
@@ -394,6 +395,93 @@ defineRule({
   check: (c) => (c.vi.depth > 8 ? warn(`${c.vi.depth}-bit H.264`, 'H.264 above 8 bits (High 10) is not decoded by most hardware.', { offset: c.entryOffset }) : pass('8-bit 4:2:0', 'Decoded by every device.')),
 });
 
+defineRule({
+  id: 'brands', category: 'Container', severity: 'info', spec: 'isobmff', clause: '§4.3 file type box; CMAF §7.2 brands',
+  title: 'File-type brands say what the file is',
+  applies: (c) => !!c.mp4?.ftyp,
+  check: (c) => {
+    const f = c.mp4.ftyp.data;
+    const all = [...new Set([f.major, ...(f.brands ?? [])].filter(Boolean))];
+    const cmaf = all.some((b) => /^cmf[c2]$/.test(b));
+    const frag = !!c.mp4.moof;
+    if (cmaf && !frag) return fail(`Brand ${all.find((b) => /^cmf/.test(b))} on a file that is not fragmented`, 'CMAF brands promise fragmented, single-track media; an unfragmented file wearing one misleads packagers.', { value: all, offset: c.mp4.ftyp.offset });
+    if (!all.includes('isom') && !all.includes('iso2') && !all.includes('mp42') && !all.includes('mp41') && !cmaf) return warn(`Brands ${all.map((b) => `'${b}'`).join(' ')}: no ISO base brand`, 'Players expect isom/iso2/mp41/mp42 (or a CMAF brand) among the compatible brands.', { value: all, offset: c.mp4.ftyp.offset });
+    return info(`Brands ${all.map((b) => `'${b}'`).join(' ')}${cmaf ? ' (CMAF)' : ''}`, 'The specifications the writer claims the file follows.', { value: all, offset: c.mp4.ftyp.offset });
+  },
+});
+
+defineRule({
+  id: 'display-aspect', category: 'Video', severity: 'warning', spec: 'isobmff', clause: '§8.3.2 tkhd width/height against the coded size and pixel aspect',
+  title: 'The track\'s display size matches the coded picture',
+  applies: (c) => c.v && c.vi.width && c.vi.height && c.v.node?.child?.('tkhd')?.data?.width > 0,
+  check: (c) => {
+    const tk = c.v.node.child('tkhd').data;
+    const sar = c.vi.sps?.vui?.sar;
+    const par = sar && sar.h ? sar.w / sar.h : 1;
+    // The display matrix may swap width and height (a 90° rotation); compare the aspect either way.
+    const coded = (c.vi.width * par) / c.vi.height;
+    const disp = tk.width / tk.height;
+    const ok = Math.abs(disp - coded) / coded < 0.02 || Math.abs(1 / disp - coded) / coded < 0.02;
+    return ok
+      ? pass(`Display ${fmtNum(tk.width, 0)}×${fmtNum(tk.height, 0)} matches the coded ${c.vi.width}×${c.vi.height}${par !== 1 ? ` at pixel aspect ${sar.w}:${sar.h}` : ''}`, 'Players show the picture at the shape it was coded.', { value: `${tk.width}×${tk.height}` })
+      : warn(`Display ${fmtNum(tk.width, 0)}×${fmtNum(tk.height, 0)} disagrees with the coded ${c.vi.width}×${c.vi.height}${par !== 1 ? ` at pixel aspect ${sar.w}:${sar.h}` : ''}`, 'The container asks for one shape and the bitstream codes another: some players stretch the picture, others ignore the container.', { value: `${tk.width}×${tk.height}`, expected: `${c.vi.width}×${c.vi.height}`, offset: c.v.node.child('tkhd').offset });
+  },
+});
+
+defineRule({
+  id: 'hdr-metadata', category: 'Colour', severity: 'warning', spec: 'hlsAuth', clause: '1.12 HDR10 needs mastering display and content light level metadata',
+  title: 'HDR10 static metadata present',
+  applies: (c) => c.colour && c.colour.transfer === 16 && c.v?.entryNode?.children,
+  check: (c) => {
+    const kids = c.v.entryNode.children ?? [];
+    const has = (t) => kids.some((n) => n.type === t);
+    const mdcv = has('mdcv') || has('SmDm');
+    const clli = has('clli') || has('CoLL');
+    return mdcv && clli
+      ? pass('Mastering display and content light level metadata present', 'HDR10 players can map the picture to their display.')
+      : warn(`HDR10 without ${[!mdcv ? 'mastering display (mdcv)' : null, !clli ? 'content light level (clli)' : null].filter(Boolean).join(' or ')} metadata`, 'Without static metadata a display tone-maps blindly; Apple requires both boxes for HDR10 renditions.', { offset: c.entryOffset });
+  },
+});
+
+defineRule({
+  id: 'fragments', category: 'Container', severity: 'critical', spec: 'cmaf', clause: '§7.3 fragment sequence, decode time continuity, moof+mdat pairing',
+  title: 'Movie fragments are continuous',
+  applies: (c) => c.mp4?.moofs?.length > 0,
+  check: (c) => {
+    const kids = c.doc.root.children ?? [];
+    const problems = [];
+    let prevSeq = null;
+    let prevTime = null;
+    let unpaired = 0;
+    for (let i = 0; i < kids.length; i++) {
+      const n = kids[i];
+      if (n.type !== 'moof') continue;
+      if (kids[i + 1]?.type !== 'mdat') unpaired++;
+      const seq = n.find?.('mfhd')?.data?.seq;
+      if (seq !== undefined && prevSeq !== null && seq !== prevSeq + 1) problems.push(`sequence ${prevSeq} → ${seq} at ${n.offset}`);
+      if (seq !== undefined) prevSeq = seq;
+      const t = n.find?.('tfdt')?.data?.time;
+      if (t !== undefined && prevTime !== null && t < prevTime) problems.push(`decode time goes back at ${n.offset}`);
+      if (t !== undefined) prevTime = t;
+    }
+    if (unpaired) problems.push(`${plural(unpaired, 'moof')} not followed by mdat`);
+    return problems.length
+      ? fail(`${c.mp4.moofs.length} fragments: ${problems.slice(0, 3).join('; ')}`, 'Players and packagers read fragments in order; a gap in the sequence or a decode time that goes back breaks playback at that point.', { value: problems, offset: c.mp4.moofs[0].offset })
+      : pass(`${c.mp4.moofs.length} fragments in sequence, decode times continuous, each moof paired with its mdat`, 'The fragments can be played or repackaged in order.', { value: c.mp4.moofs.length });
+  },
+});
+
+defineRule({
+  id: 'vbv-holds', category: 'Video', severity: 'critical', spec: 'h264', clause: 'Annex C hypothetical reference decoder: no buffer underflow at the declared rate',
+  title: 'The declared VBV never underflows',
+  applies: (c) => c.rc && c.rc.maxrate > 0 && c.rc.bufsize > 0 && c.v?.samples?.count > 1,
+  check: (c) => {
+    const r = simulateVbv(c.v, { maxrate: c.rc.maxrate * 1000, bufsize: c.rc.bufsize * 1000 });
+    if (r.underflows.length) return fail(`Buffer underflows ${plural(r.underflows.length, 'time')} at ${fmtInt(c.rc.maxrate)} kb/s with a ${fmtInt(c.rc.bufsize)} kbit buffer`, 'A player receiving the stream at the declared maximum rate would stall there; the encoder broke its own VBV promise.', { value: r.underflows.length, offset: c.v.samples.offsets[r.underflows[0]] });
+    return pass(`Buffer never underflows at ${fmtInt(c.rc.maxrate)} kb/s with a ${fmtInt(c.rc.bufsize)} kbit buffer (never below ${fmtNum((r.min / (c.rc.bufsize * 1000)) * 100, 0)} %)`, 'The stream keeps the promise its VBV settings make.', { value: r.min / (c.rc.bufsize * 1000) });
+  },
+});
+
 // ====================================================================== audio
 
 defineRule({
@@ -727,7 +815,7 @@ export async function auditFile(doc, expect = {}, { onProgress, measured = {}, p
   };
   if (doc.format?.id === 'isobmff') {
     const kids = doc.root.children ?? [];
-    c.mp4 = { moov: kids.find((n) => n.type === 'moov'), mdat: kids.find((n) => n.type === 'mdat'), moof: kids.find((n) => n.type === 'moof') };
+    c.mp4 = { ftyp: kids.find((n) => n.type === 'ftyp'), moov: kids.find((n) => n.type === 'moov'), mdat: kids.find((n) => n.type === 'mdat'), moof: kids.find((n) => n.type === 'moof'), moofs: kids.filter((n) => n.type === 'moof') };
   }
   if (v) {
     c.lvl = checkLevel({ codec: vi.family, width: vi.codedWidth, height: vi.codedHeight, fps: vi.fps, bitrate: vi.bitrate, frames: vi.frames, profile: vi.profile, level: vi.level, tier: vi.tier, constraintSet3: vi.constraintSet3, refs: vi.refs, dpb: vi.dpb });

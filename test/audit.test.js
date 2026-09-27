@@ -122,6 +122,33 @@ test('the JSON report and its SARIF form carry the findings', { skip: !haveLadde
   doc._close();
 });
 
+test('brands, display size, the declared VBV and HDR metadata are judged from the boxes', { skip: !haveLadder || !haveSample('h264-aac-fragmented.mp4') || !haveSample('hevc-10bit-hdr.mp4') }, async () => {
+  const rung = await open('ladder-270p.mp4');
+  const r = await auditFile(rung, {});
+  assert.equal(byId(r.checks, 'brands').level, 'info');
+  assert.ok(byId(r.checks, 'brands').value.includes('isom'));
+  assert.equal(byId(r.checks, 'display-aspect').level, 'pass');
+  assert.equal(byId(r.checks, 'vbv-holds').level, 'pass', 'the sample never underflows its own VBV');
+  assert.equal(byId(r.checks, 'fragments'), undefined, 'not a fragmented file');
+  rung._close();
+  const frag = await open('h264-aac-fragmented.mp4');
+  const f = await auditFile(frag, {});
+  assert.equal(byId(f.checks, 'fragments').level, 'pass');
+  assert.equal(byId(f.checks, 'fragments').value, 4);
+  frag._close();
+  const cmaf = await open('h264-aac-dash-sidx.mp4');
+  const d = await auditFile(cmaf, {});
+  assert.match(byId(d.checks, 'brands').title, /CMAF/);
+  cmaf._close();
+  const hdr = await open('hevc-10bit-hdr.mp4');
+  const h = await auditFile(hdr, {});
+  assert.equal(byId(h.checks, 'colour-signalled').level, 'pass');
+  assert.equal(byId(h.checks, 'hdr-consistent').level, 'info', '10-bit PQ with BT.2020 primaries and matrix is a genuine HDR rendition');
+  assert.equal(byId(h.checks, 'hdr-metadata').level, 'warn', 'no mdcv/clli in the sample');
+  assert.equal(h.facts.video.colour, '9/16/9');
+  hdr._close();
+});
+
 /** A small server that honours Range (or ignores it, to test the fallback). */
 function serve(file, { ranges = true } = {}) {
   const bytes = fs.readFileSync(file);
