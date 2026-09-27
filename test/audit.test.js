@@ -147,6 +147,12 @@ test('a service\'s overlay caps levels per rendition and promotes severities', {
   const plain = await auditFile(doc, { gop: 2 });
   assert.equal(byId(plain.checks, 'level-policy'), undefined, 'no cap, no rule');
   assert.equal(byId(plain.checks, 'gop-length').severity, 'WARNING');
+  // A promoted rule's soft finding (a warn) takes the service's severity too.
+  const soft = await auditFile(doc, { peakRatio: 0.5 });
+  assert.equal(byId(soft.checks, 'peak-ratio').level, 'warn');
+  assert.equal(byId(soft.checks, 'peak-ratio').severity, 'WARNING');
+  const promoted = await auditFile(doc, { peakRatio: 0.5, overlay: { severity: { 'peak-ratio': 'critical' } } });
+  assert.equal(byId(promoted.checks, 'peak-ratio').severity, 'CRITICAL', 'a warning of a rule the service calls critical is critical');
   assert.ok(r.facts.index.size > 0 && r.facts.index.offset >= 0, 'the index location is in the facts');
   doc._close();
 });

@@ -964,9 +964,15 @@ export async function auditFile(doc, expect = {}, { onProgress, measured = {}, p
 function finish(rule, res, overlay = null) {
   // A check may name a more specific source than its rule (the level tables of the codec at hand).
   const out = { id: rule.id, category: rule.category, level: res.level, title: res.title, text: res.text, spec: res.spec ?? rule.spec, clause: res.clause ?? rule.clause ?? null };
-  // A service may promote or demote a rule's severity (expect.overlay.severity[id]).
-  const severity = overlay?.severity?.[rule.id] ?? rule.severity;
-  if (res.level === 'warn' || res.level === 'fail') out.severity = severity === 'critical' && res.level === 'fail' ? 'CRITICAL' : severity === 'info' ? 'INFO' : 'WARNING';
+  // A service may promote or demote a rule's severity (expect.overlay.severity[id]). Without an
+  // overlay a critical rule's soft finding (warn) stays a WARNING; with one, the service has
+  // said what any finding of that rule means to it, and every warn or fail takes that severity.
+  const set = overlay?.severity?.[rule.id];
+  const severity = set ?? rule.severity;
+  if (res.level === 'warn' || res.level === 'fail') {
+    if (set) out.severity = set === 'critical' ? 'CRITICAL' : set === 'info' ? 'INFO' : 'WARNING';
+    else out.severity = severity === 'critical' && res.level === 'fail' ? 'CRITICAL' : severity === 'info' ? 'INFO' : 'WARNING';
+  }
   for (const k of ['value', 'expected', 'offset']) if (res[k] !== undefined) out[k] = res[k];
   if (out.severity) {
     const rem = remedyFor(rule.id);
