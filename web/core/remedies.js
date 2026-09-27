@@ -43,7 +43,15 @@ export const REMEDIES = {
     cause: 'The source sample aspect ratio was kept through the encode.',
     fix: 'Add setsar=1 after scaling to the display size: scale=W:H,setsar=1.',
   },
-  'fps-max': {
+  codec: {
+    cause: 'The source codec was copied, or a codec chosen that HLS clients for Apple devices do not decode.',
+    fix: '-c:v libx264 (or libx265 with -tag:v hvc1) for the HLS renditions; keep VP9/AV1 for separate DASH/WebM renditions.',
+  },
+  'b-frames': {
+    cause: 'B-frames enabled while Baseline profile was requested.',
+    fix: '-profile:v main (or high) when B-frames are wanted; -bf 0 for a Baseline rendition.',
+  },
+  'fps-range': {
     cause: 'The source frame rate was kept on every rendition.',
     fix: 'Per rendition: -r 30 (or fps=30 in the filter chain) for small rungs; keep the source rate only where it pays.',
   },
@@ -97,10 +105,9 @@ export const REMEDIES = {
   range: { cause: 'Full-range input flagged through.', fix: '-vf scale=out_range=tv (or zscale=r=tv) and -color_range tv.' },
   depth: { cause: '10-bit input encoded with a 10-bit pixel format.', fix: '-pix_fmt yuv420p for H.264 renditions.' },
   'audio-codec': { cause: 'The source audio codec was copied, or a non-AAC encoder was chosen.', fix: '-c:a aac (or libfdk_aac) -profile:a aac_low.' },
-  'audio-codec-expected': { cause: 'A different AAC flavour than the service standard.', fix: '-c:a libfdk_aac -profile:a aac_low (AAC-LC) or aac_he (HE-AAC) consistently.' },
   'audio-rate': { cause: 'The source sample rate was kept, or a fixed rate that differs from the standard.', fix: '-ar 48000 (or 44100) on every rendition.' },
   'audio-channels': { cause: 'Surround source copied through.', fix: '-ac 2 for the stereo renditions; keep surround only in a dedicated rendition.' },
-  'audio-bitrate': { cause: 'Bit rate per channel set too low for AAC-LC.', fix: '≥ 64 kb/s per channel for AAC-LC (stereo 128 kb/s), or switch to HE-AAC below 64 kb/s per channel.' },
+  'audio-bitrate': { cause: 'Bit rate per channel set too low for AAC-LC.', fix: '≥ 48 kb/s per channel for AAC-LC (96 kb/s stereo; 128 kb/s is the usual choice), or HE-AAC (-profile:a aac_he) below that.' },
   'audio-priming': {
     cause: 'The AAC was carried through MPEG-2 TS (ADTS) and remuxed to MP4 with -c copy: the encoder delay is not signalled, so audio starts late.',
     fix: 'Encode audio straight to MP4/M4A (the mp4 muxer writes the edit list for the encoder delay), or mux from the encoder in one step; if TS is unavoidable, add -af "adelay=-<delay>" / trim the first 2048 samples and check sync with a flash-and-beep clip.',

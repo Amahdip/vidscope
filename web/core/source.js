@@ -38,56 +38,66 @@ export class HttpSource {
    * Open a URL: the size comes from the Content-Range of a one-byte range request (every
    * server that supports ranges answers it), else from Content-Length of a HEAD.
    */
-  static async open(url, { headers = {}, name, retries, timeoutMs } = {}) {
-    const opts = { headers: { ...headers, Range: 'bytes=0-0' } };
-    const res = await fetch(url, opts);
+  static async open(url, { headers = {}, name, retries = 3, timeoutMs = 30000 } = {}) {
+    const src = new HttpSource(url, 0, name ?? 'remote', { headers, retries, timeoutMs });
+    const res = await src.request({ headers: { ...headers, Range: 'bytes=0-0' } }, 'the size');
     let size = null;
     const cr = res.headers.get('content-range');
     const m = cr && /\/(\d+)\s*$/.exec(cr);
     if (res.status === 206 && m) size = Number(m[1]);
-    else if (res.ok) {
+    else if (res.status === 200) {
       // No range support: Content-Length of the whole file, and every read will fetch it all.
       const len = res.headers.get('content-length');
       if (len) size = Number(len);
     }
     if (res.body?.cancel) await res.body.cancel().catch(() => {});
     if (size === null) {
-      const head = await fetch(url, { method: 'HEAD', headers });
+      // A 206 whose Content-Range gives no total ("bytes 0-0/*"): ask the HEAD.
+      const head = await src.request({ method: 'HEAD', headers }, 'the size');
       const len = head.headers.get('content-length');
-      if (!head.ok || !len) throw new Error(`HTTP ${head.status}: cannot find the size of ${url}`);
+      if (!len) throw new Error(`HTTP ${head.status}: cannot find the size of ${url}`);
       size = Number(len);
     }
-    const base = name ?? decodeURIComponent(new URL(url).pathname.split('/').pop() || 'remote');
-    return new HttpSource(url, size, base, { headers, retries, timeoutMs });
+    src.size = size;
+    if (!name) {
+      const seg = new URL(url).pathname.split('/').pop() || 'remote';
+      try {
+        src.name = decodeURIComponent(seg);
+      } catch {
+        src.name = seg;
+      }
+    }
+    return src;
   }
 
-  async readRaw(offset, length) {
-    // A server that ignored Range once will ignore it again: keep the body it sent and
-    // serve every later read from it rather than download the file for each read.
-    if (this.whole) return this.whole.subarray(offset, offset + length);
-    const last = offset + length - 1;
+  /**
+   * One HTTP request with the retry policy: 429 and 5xx are retried with backoff, other errors
+   * are final; a request that produces no bytes for timeoutMs is abandoned. The timeout is an
+   * idle timeout, reset by every chunk, so a slow but moving download is never cut short and
+   * then downloaded again.
+   */
+  async request(init, what) {
     let lastError = null;
     for (let attempt = 0; attempt <= this.retries; attempt++) {
       const ctl = typeof AbortController === 'function' ? new AbortController() : null;
-      const timer = ctl ? setTimeout(() => ctl.abort(), this.timeoutMs) : null;
+      let timer = null;
+      const arm = () => {
+        if (!ctl) return;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => ctl.abort(), this.timeoutMs);
+      };
       try {
         this.stats.requests++;
-        const res = await fetch(this.url, { headers: { ...this.headers, Range: `bytes=${offset}-${last}` }, signal: ctl?.signal });
-        if (res.status === 429 || res.status >= 500) throw new Error(`HTTP ${res.status} while reading bytes ${offset}-${last}`);
+        arm();
+        const res = await fetch(this.url, { ...init, signal: ctl?.signal });
+        if (res.status === 429 || res.status >= 500) throw new Error(`HTTP ${res.status} while reading ${what}`);
         if (!res.ok) {
-          const err = new Error(`HTTP ${res.status} while reading bytes ${offset}-${last}`);
+          const err = new Error(`HTTP ${res.status} while reading ${what}`);
           err.fatal = true;
           throw err;
         }
-        const buf = new Uint8Array(await res.arrayBuffer());
-        this.stats.bytes += buf.length;
-        // A server that ignores Range answers 200 with the whole file.
-        if (res.status === 200) {
-          this.whole = buf;
-          this.stats.wholeFile = true;
-          return buf.subarray(offset, offset + length);
-        }
-        return buf;
+        res.arm = arm;
+        return res;
       } catch (e) {
         lastError = e;
         if (e.fatal || attempt === this.retries) break;
@@ -98,6 +108,52 @@ export class HttpSource {
       }
     }
     throw lastError;
+  }
+
+  /** The whole body of a response, resetting the idle timer as chunks arrive. */
+  static async body(res) {
+    if (!res.body?.getReader) return new Uint8Array(await res.arrayBuffer());
+    const reader = res.body.getReader();
+    const parts = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.arm?.();
+      parts.push(value);
+      total += value.length;
+    }
+    const out = new Uint8Array(total);
+    let w = 0;
+    for (const p of parts) {
+      out.set(p, w);
+      w += p.length;
+    }
+    return out;
+  }
+
+  async readRaw(offset, length) {
+    // A server that ignored Range once will ignore it again: keep the body it sent and
+    // serve every later read from it rather than download the file for each read.
+    if (this.whole) return this.whole.subarray(offset, offset + length);
+    const last = offset + length - 1;
+    const res = await this.request({ headers: { ...this.headers, Range: `bytes=${offset}-${last}` } }, `bytes ${offset}-${last}`);
+    let buf;
+    try {
+      buf = await HttpSource.body(res);
+    } catch {
+      // The body stalled or the connection dropped after the headers: one more try, whole.
+      const again = await this.request({ headers: { ...this.headers, Range: `bytes=${offset}-${last}` } }, `bytes ${offset}-${last}`);
+      buf = await HttpSource.body(again);
+    }
+    this.stats.bytes += buf.length;
+    // A server that ignores Range answers 200 with the whole file.
+    if (res.status === 200) {
+      this.whole = buf;
+      this.stats.wholeFile = true;
+      return buf.subarray(offset, offset + length);
+    }
+    return buf;
   }
 }
 

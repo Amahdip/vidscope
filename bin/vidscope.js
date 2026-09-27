@@ -362,7 +362,9 @@ async function main() {
   // Subcommands run without the server: `vidscope audit` checks files and exits.
   if (process.argv[2] === 'audit') {
     const { main: audit } = await import('../scripts/audit.mjs');
-    process.exit(await audit(process.argv.slice(3)));
+    // exitCode, not exit(): a report written to a pipe must drain before the process ends.
+    process.exitCode = await audit(process.argv.slice(3));
+    return;
   }
   let opts;
   try {

@@ -5,12 +5,32 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import fs from 'node:fs';
-import { open, sample, haveSample } from './helpers.mjs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { open, sample, haveSample, haveFfmpeg } from './helpers.mjs';
+import { NodeFileSource } from '../scripts/node-source.mjs';
 import { auditFile, auditLadder, auditMarkdown, allRules, tally } from '../web/core/audit.js';
 import { REMEDIES } from '../web/core/remedies.js';
 import { HttpSource, CachedSource } from '../web/core/source.js';
 import { openDocument } from '../web/formats/index.js';
-import { parseExpect, toSarif, toReport } from '../scripts/audit.mjs';
+import { parseExpect, mergeExpect, toSarif, toReport, auditInputs, ladderKey } from '../scripts/audit.mjs';
+
+/** A fixture made with ffmpeg for one test, in a temporary folder. */
+function makeFixture(name, args) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vidscope-audit-'));
+  const file = path.join(dir, name);
+  execFileSync('ffmpeg', ['-v', 'error', '-y', ...args, file], { stdio: 'ignore' });
+  return { file, dir, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+}
+
+async function auditPath(file, expect = {}, opts = {}) {
+  const src = await NodeFileSource.open(file);
+  const doc = await openDocument(src);
+  const r = await auditFile(doc, expect, opts);
+  await src.close();
+  return r;
+}
 
 const LADDER = ['ladder-source.mkv', 'ladder-270p.mp4', 'ladder-180p.mp4', 'ladder-180p-gop40.mp4', 'ladder-remux.mp4'];
 const haveLadder = LADDER.every(haveSample);
@@ -29,14 +49,102 @@ test('every rule has a stable id, a source and a remedy where it can fail', () =
   for (const id of ['fast-start', 'colour-signalled', 'audio-priming', 'vbv', 'idr-aligned', 'hdr-consistent']) assert.ok(REMEDIES[id]?.fix, `${id} has a remedy`);
 });
 
-test('expectations parse from the command line', () => {
-  const ex = parseExpect('gop=5,fpsMax=60,colour=1/1/1,audio.codec=AAC LC,audio.sampleRate=44100,loudness=-16,loudnessTolerance=1,truePeak=-1,segments=5/10');
+test('expectations parse from the command line and merge', () => {
+  const ex = parseExpect('gop=5,fpsMax=60,colour=1/1/1,audio.codec=AAC LC,audio.sampleRate=44100,audio.required=false,loudness=-16,loudnessTolerance=1,truePeak=-1,segments=5/10');
   assert.equal(ex.gop, 5);
   assert.equal(ex.fpsMax, 60);
   assert.deepEqual(ex.colour, { primaries: 1, transfer: 1, matrix: 1 });
-  assert.deepEqual(ex.audio, { codec: 'AAC LC', sampleRate: 44100 });
+  assert.deepEqual(ex.audio, { codec: 'AAC LC', sampleRate: 44100, required: false }, 'true/false become booleans');
   assert.deepEqual(ex.loudness, { integrated: -16, tolerance: 1, truePeakMax: -1 });
   assert.deepEqual(ex.segments, [5, 10]);
+  const merged = mergeExpect(ex, parseExpect('audio.channelsMax=2,gop=2'));
+  assert.deepEqual(merged.audio, { codec: 'AAC LC', sampleRate: 44100, required: false, channelsMax: 2 }, 'nested objects merge');
+  assert.equal(merged.gop, 2);
+  assert.throws(() => parseExpect('colour=bt709'), /primaries\/transfer\/matrix/);
+});
+
+test('sync verdicts follow BT.1359: sound may lag more than it may lead', { skip: !haveLadder }, async () => {
+  const doc = await open('ladder-270p.mp4');
+  const at = async (ms) => byId((await auditFile(doc, {}, { measured: { sync: { audioLateMs: ms } } })).checks, 'av-sync');
+  assert.equal((await at(10)).level, 'pass');
+  assert.equal((await at(100)).level, 'warn', '100 ms of lag is below the 125 ms detectability threshold');
+  assert.equal((await at(150)).level, 'warn', '150 ms of lag is detectable but not yet objectionable');
+  assert.equal((await at(200)).level, 'fail', '200 ms of lag is objectionable');
+  assert.equal((await at(-60)).level, 'warn', '60 ms of lead is detectable');
+  assert.equal((await at(-100)).level, 'fail', '100 ms of lead is objectionable');
+  doc._close();
+});
+
+test('renditions of one content group into a ladder, other numbered files do not', () => {
+  assert.equal(ladderKey('/a/movie-1080p.mp4'), ladderKey('/a/movie-720p.mp4'));
+  assert.equal(ladderKey('/a/clip_1920x1080.mp4'), ladderKey('/a/clip_640x360.mp4'));
+  assert.notEqual(ladderKey('/a/movie-720p.mp4'), ladderKey('/b/movie-720p.mp4'), 'a different folder is a different ladder');
+  assert.equal(ladderKey('/a/movie-1.mp4'), null, 'a bare number is not a rendition label');
+  assert.equal(ladderKey('http://h/x/movie-360p.mp4?token=1'), ladderKey('http://h/x/movie-720p.mp4?token=2'));
+});
+
+test('an input that cannot be opened is reported and the others still are', { skip: !haveLadder }, async () => {
+  const log = [];
+  const out = await auditInputs({ inputs: [sample('ladder-270p.mp4'), sample('no-such-file.mp4')], headers: {}, expect: {}, ladder: false, budget: null, measure: false }, (s) => log.push(s));
+  assert.equal(out.results.length, 2);
+  assert.equal(out.results[0].error, undefined);
+  assert.match(out.results[1].error, /ENOENT|no such file/i);
+  const report = toReport(out, { expect: {} });
+  assert.equal(report.summary.errors, 1);
+  assert.equal(report.files[1].error, out.results[1].error);
+  const md = auditMarkdown(out.results, out.ladders);
+  assert.match(md, /Could not be audited/);
+  const sarif = toSarif(report);
+  assert.ok(sarif.runs[0].results.every((r) => r.locations[0].physicalLocation.artifactLocation.uri.startsWith('file:')), 'artifacts are file: URLs');
+});
+
+test('a Markdown report lists every ladder', { skip: !haveLadder }, async () => {
+  const a = await Promise.all(['ladder-270p.mp4', 'ladder-180p.mp4'].map(open));
+  const ra = await Promise.all(a.map((d) => auditFile(d, {})));
+  const ladders = [{ files: ['x-1080p.mp4', 'x-720p.mp4'], ...auditLadder(ra, {}) }, { files: ['y-1080p.mp4', 'y-720p.mp4'], ...auditLadder(ra, {}) }];
+  const md = auditMarkdown(ra, ladders);
+  assert.equal((md.match(/^## Ladder: /gm) ?? []).length, 2);
+  for (const d of a) d._close();
+});
+
+test('pixel aspect and display size read the VUI as the parser stores it', { skip: !haveSample('h264-aac.mp4') || !haveFfmpeg() }, async () => {
+  const fx = makeFixture('anamorphic.mp4', ['-i', sample('h264-aac.mp4'), '-t', '1', '-vf', 'setsar=4/3', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'copy']);
+  try {
+    const r = await auditPath(fx.file);
+    assert.equal(byId(r.checks, 'square-pixels').level, 'warn', 'a 4:3 pixel aspect is not square');
+    assert.equal(byId(r.checks, 'square-pixels').value, '4:3');
+    assert.equal(byId(r.checks, 'display-aspect').level, 'pass', 'ffmpeg wrote a matching tkhd size for the wide pixels');
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('fragments are checked per track, so one moof per track is continuous', { skip: !haveSample('h264-aac.mp4') || !haveFfmpeg() }, async () => {
+  const fx = makeFixture('separate.mp4', ['-i', sample('h264-aac.mp4'), '-c', 'copy', '-movflags', 'frag_keyframe+separate_moof+empty_moov', '-frag_duration', '1000000']);
+  try {
+    const r = await auditPath(fx.file);
+    const f = byId(r.checks, 'fragments');
+    assert.equal(f.level, 'pass', f.title);
+    assert.ok(f.value > 2);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('the frame budget spreads the GOPs it reads over the whole file', { skip: !haveLadder }, async () => {
+  const doc = await open('ladder-source.mkv');
+  const r = await auditFile(doc, {}, { payloadBudget: 1 });
+  assert.ok(r.facts.payload, 'a budget below one GOP still reads the start of GOP 0');
+  assert.equal(r.facts.payload.gopsRead, 1);
+  doc._close();
+  const doc2 = await open('ladder-270p.mp4');
+  const half = Math.floor(doc2.size / 2);
+  const r2 = await auditFile(doc2, {}, { payloadBudget: half });
+  const p = r2.facts.payload;
+  assert.ok(p.gopsRead >= 2 && p.gopsRead < p.gops, `read ${p.gopsRead} of ${p.gops} GOPs`);
+  assert.match(byId(r2.checks, 'key-is-idr').title, /GOPs read/);
+  assert.doesNotMatch(byId(r2.checks, 'gop-fixed').title, /GOPs read/, 'key-frame positions come from the sample tables');
+  doc2._close();
 });
 
 test('a converted rung passes the container and GOP rules, and the ladder rules see its shape', { skip: !haveLadder }, async () => {
@@ -97,8 +205,8 @@ test('measured values feed the loudness, sync and fidelity rules', { skip: !have
   const r = await auditFile(doc, { loudness: { integrated: -16, tolerance: 1, truePeakMax: -1 } }, { measured: { loudness: { integrated: -19.2, truePeak: -0.3 }, sync: { audioLateMs: 46 }, quality: { psnr: 38.1, ssim: 0.97 } } });
   assert.equal(byId(r.checks, 'loudness').level, 'fail');
   assert.equal(byId(r.checks, 'true-peak').level, 'fail');
-  assert.equal(byId(r.checks, 'av-sync').level, 'fail', '46 ms is past the detectability limit');
-  assert.equal(byId(r.checks, 'av-sync').severity, 'CRITICAL');
+  assert.equal(byId(r.checks, 'av-sync').level, 'warn', '46 ms of lag is a defect but below the BT.1359 detectability threshold');
+  assert.equal(byId(r.checks, 'av-sync').severity, 'WARNING');
   assert.equal(byId(r.checks, 'quality').level, 'info');
   doc._close();
 });
@@ -149,8 +257,8 @@ test('brands, display size, the declared VBV and HDR metadata are judged from th
   hdr._close();
 });
 
-/** A small server that honours Range (or ignores it, to test the fallback). */
-function serve(file, { ranges = true } = {}) {
+/** A small server that honours Range (or ignores it, or hides the total, to test the fallbacks). */
+function serve(file, { ranges = true, total = true } = {}) {
   const bytes = fs.readFileSync(file);
   const hits = [];
   const server = http.createServer((req, res) => {
@@ -163,7 +271,7 @@ function serve(file, { ranges = true } = {}) {
     if (m) {
       const start = Number(m[1]);
       const end = m[2] ? Math.min(Number(m[2]), bytes.length - 1) : bytes.length - 1;
-      res.writeHead(206, { 'content-range': `bytes ${start}-${end}/${bytes.length}`, 'content-length': end - start + 1, 'content-type': 'video/mp4' });
+      res.writeHead(206, { 'content-range': `bytes ${start}-${end}/${total ? bytes.length : '*'}`, 'content-length': end - start + 1, 'content-type': 'video/mp4' });
       return res.end(bytes.subarray(start, end + 1));
     }
     res.writeHead(200, { 'content-length': bytes.length, 'content-type': 'video/mp4' });
@@ -178,15 +286,30 @@ test('a remote file is audited by byte ranges, reading only what the rules need'
     const src = await HttpSource.open(s.url, { headers: { 'x-audit': 'yes' } });
     assert.equal(src.size, s.size, 'the size comes from Content-Range');
     assert.equal(src.name, 'ladder-270p.mp4');
-    const cached = new CachedSource(src, { blockSize: 64 * 1024 });
+    const cached = new CachedSource(src, { blockSize: 16 * 1024 });
     const doc = await openDocument(cached);
-    const r = await auditFile(doc, { gop: 1 }, { payloadBudget: 64 * 1024 });
+    const r = await auditFile(doc, { gop: 1 }, { payloadBudget: 16 * 1024 });
     assert.equal(byId(r.checks, 'fast-start').level, 'pass');
     assert.equal(byId(r.checks, 'gop-length').level, 'pass', 'the GOP comes from the sample tables, no payload needed');
     assert.ok(r.facts.payload.gopsRead < r.facts.payload.gops, `read ${r.facts.payload.gopsRead} of ${r.facts.payload.gops} GOPs`);
-    assert.match(byId(r.checks, 'key-is-idr').title, /GOPs read\)/);
+    assert.match(byId(r.checks, 'key-is-idr').title, /GOPs read/);
     assert.ok(src.stats.bytes < s.size, `${src.stats.bytes} of ${s.size} bytes fetched`);
     assert.ok(s.hits.every((h) => h && h.startsWith('bytes=')), 'every request was a range request');
+  } finally {
+    await s.close();
+  }
+});
+
+test('a range reply without a total length falls back to the HEAD for the size', { skip: !haveLadder }, async () => {
+  const s = await serve(sample('ladder-180p.mp4'), { total: false });
+  try {
+    const src = await HttpSource.open(s.url);
+    assert.equal(src.size, s.size);
+    assert.ok(s.hits.length >= 1);
+    const doc = await openDocument(src);
+    const r = await auditFile(doc, {});
+    assert.equal(byId(r.checks, 'fast-start').level, 'pass');
+    assert.notEqual(src.stats.wholeFile, true, 'ranges were honoured');
   } finally {
     await s.close();
   }

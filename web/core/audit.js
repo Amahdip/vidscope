@@ -22,6 +22,9 @@ export const SPECS = {
   hlsAuth: { name: 'HLS Authoring Specification for Apple Devices', url: 'https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices' },
   rfc8216: { name: 'RFC 8216, HTTP Live Streaming', url: 'https://www.rfc-editor.org/rfc/rfc8216' },
   h264: { name: 'ITU-T H.264', url: 'https://www.itu.int/rec/T-REC-H.264' },
+  h265: { name: 'ITU-T H.265', url: 'https://www.itu.int/rec/T-REC-H.265' },
+  av1: { name: 'AV1 Bitstream & Decoding Process Specification', url: 'https://aomediacodec.github.io/av1-spec/' },
+  vp9: { name: 'VP9 Bitstream & Decoding Process Specification', url: 'https://www.webmproject.org/vp9/' },
   h273: { name: 'ITU-T H.273, colour description', url: 'https://www.itu.int/rec/T-REC-H.273' },
   isobmff: { name: 'ISO/IEC 14496-12, ISO base media file format', url: 'https://www.iso.org/standard/83102.html' },
   cmaf: { name: 'ISO/IEC 23000-19, CMAF', url: 'https://www.iso.org/standard/85623.html' },
@@ -157,17 +160,26 @@ defineRule({
   },
 });
 
+// Where each codec's level limits are written.
+const LEVEL_SPEC = {
+  avc: { spec: 'h264', clause: 'Annex A, Table A-1' },
+  hevc: { spec: 'h265', clause: 'Annex A, Tables A.8 and A.9' },
+  av1: { spec: 'av1', clause: 'Annex A.3 levels' },
+  vp9: { spec: 'vp9', clause: 'Annex A levels' },
+};
+
 defineRule({
   id: 'level-holds', category: 'Video', severity: 'critical', spec: 'h264', clause: 'Annex A, Table A-1',
   title: 'The signalled level holds',
   applies: (c) => c.lvl?.signalled && !c.lvl.unconstrained,
   check: (c) => {
     const name = c.lvl.signalled.name;
+    const where = LEVEL_SPEC[c.vi.family] ?? LEVEL_SPEC.avc;
     if (c.lvl.pass === false) {
       const over = c.lvl.limits.filter((l) => l.pass === false && !l.soft).map((l) => l.label.toLowerCase());
-      return fail(`Breaks its level (${name}): ${over.join(', ')}`, 'A decoder that trusts the level may refuse the stream or drop frames.', { value: name, offset: c.entryOffset });
+      return fail(`Breaks its level (${name}): ${over.join(', ')}`, 'A decoder that trusts the level may refuse the stream or drop frames.', { value: name, offset: c.entryOffset, ...where });
     }
-    return pass(`Fits its level (${name})`, 'Every limit of the signalled level holds.', { value: name });
+    return pass(`Fits its level (${name})`, 'Every limit of the signalled level holds.', { value: name, ...where });
   },
 });
 
@@ -177,8 +189,9 @@ defineRule({
   applies: (c) => c.lvl?.signalled && c.lvl.lowest && !c.lvl.unconstrained,
   check: (c) => {
     const name = c.lvl.signalled.name;
-    if (c.lvl.lowest.name === name) return pass(`Level ${name} is the lowest that fits`, 'No device is shut out needlessly.', { value: name });
-    return info(`Level ${name} signalled, ${c.lvl.lowest.name} would do`, 'Devices refuse streams above the level they decode; a higher level than needed shuts some out.', { value: name, expected: c.lvl.lowest.name, offset: c.entryOffset });
+    const where = LEVEL_SPEC[c.vi.family] ?? LEVEL_SPEC.avc;
+    if (c.lvl.lowest.name === name) return pass(`Level ${name} is the lowest that fits`, 'No device is shut out needlessly.', { value: name, ...where });
+    return info(`Level ${name} signalled, ${c.lvl.lowest.name} would do`, 'Devices refuse streams above the level they decode; a higher level than needed shuts some out.', { value: name, expected: c.lvl.lowest.name, offset: c.entryOffset, ...where });
   },
 });
 
@@ -199,10 +212,10 @@ defineRule({
 defineRule({
   id: 'square-pixels', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.9 pixel aspect',
   title: 'Square pixels',
-  applies: (c) => !!c.vi.sps?.vui?.sar,
+  applies: (c) => Array.isArray(c.vi.sps?.vui?.sar),
   check: (c) => {
-    const sar = c.vi.sps.vui.sar;
-    return sar.w === sar.h ? pass('Square pixels', 'Displayed as encoded.') : warn(`Pixel aspect ${sar.w}:${sar.h}`, 'Non-square pixels are mis-scaled by some players; scale to square pixels when encoding.', { value: `${sar.w}:${sar.h}` });
+    const [w, h] = c.vi.sps.vui.sar;
+    return w === h || !w || !h ? pass('Square pixels', 'Displayed as encoded.') : warn(`Pixel aspect ${w}:${h}`, 'Non-square pixels are mis-scaled by some players; scale to square pixels when encoding.', { value: `${w}:${h}`, offset: c.entryOffset });
   },
 });
 
@@ -231,9 +244,10 @@ defineRule({
   applies: (c) => c.gop && c.gop.count >= 2,
   check: (c) => {
     const g = c.gop;
+    // Key-frame positions come from the sample tables, whatever the payload budget.
     return g.fixed
-      ? pass(`Key frame every ${fmtInt(g.avgFrames)} frames (${fmtNum(g.avgSeconds, 2)} s)${c.sampled}`, 'Segments of equal length can be cut at every key frame.', { value: g.avgSeconds })
-      : warn(`Key-frame interval varies: ${fmtNum(g.minSeconds, 2)}–${fmtNum(g.maxSeconds, 2)} s${c.sampled}`, 'Uneven intervals give uneven segments and break alignment across renditions.', { value: [g.minSeconds, g.maxSeconds], offset: c.gopOffset(g.maxSeconds) });
+      ? pass(`Key frame every ${fmtInt(g.avgFrames)} frames (${fmtNum(g.avgSeconds, 2)} s)`, 'Segments of equal length can be cut at every key frame.', { value: g.avgSeconds })
+      : warn(`Key-frame interval varies: ${fmtNum(g.minSeconds, 2)}–${fmtNum(g.maxSeconds, 2)} s`, 'Uneven intervals give uneven segments and break alignment across renditions.', { value: [g.minSeconds, g.maxSeconds], offset: c.gopOffset(g.maxSeconds) });
   },
 });
 
@@ -405,7 +419,8 @@ defineRule({
     const cmaf = all.some((b) => /^cmf[c2]$/.test(b));
     const frag = !!c.mp4.moof;
     if (cmaf && !frag) return fail(`Brand ${all.find((b) => /^cmf/.test(b))} on a file that is not fragmented`, 'CMAF brands promise fragmented, single-track media; an unfragmented file wearing one misleads packagers.', { value: all, offset: c.mp4.ftyp.offset });
-    if (!all.includes('isom') && !all.includes('iso2') && !all.includes('mp42') && !all.includes('mp41') && !cmaf) return warn(`Brands ${all.map((b) => `'${b}'`).join(' ')}: no ISO base brand`, 'Players expect isom/iso2/mp41/mp42 (or a CMAF brand) among the compatible brands.', { value: all, offset: c.mp4.ftyp.offset });
+    if (all.some((b) => b.trim() === 'qt')) return info(`Brands ${all.map((b) => `'${b}'`).join(' ')}: a QuickTime file`, 'QuickTime movies play in Apple software and FFmpeg-based players; HLS packagers want an ISO brand.', { value: all, offset: c.mp4.ftyp.offset });
+    if (!all.some((b) => /^iso[1-9m]$/.test(b) || /^mp4[12]$/.test(b)) && !cmaf) return warn(`Brands ${all.map((b) => `'${b}'`).join(' ')}: no ISO base brand`, 'Players expect isom, iso2–iso9, mp41 or mp42 (or a CMAF brand) among the compatible brands.', { value: all, offset: c.mp4.ftyp.offset });
     return info(`Brands ${all.map((b) => `'${b}'`).join(' ')}${cmaf ? ' (CMAF)' : ''}`, 'The specifications the writer claims the file follows.', { value: all, offset: c.mp4.ftyp.offset });
   },
 });
@@ -416,15 +431,16 @@ defineRule({
   applies: (c) => c.v && c.vi.width && c.vi.height && c.v.node?.child?.('tkhd')?.data?.width > 0,
   check: (c) => {
     const tk = c.v.node.child('tkhd').data;
-    const sar = c.vi.sps?.vui?.sar;
-    const par = sar && sar.h ? sar.w / sar.h : 1;
+    const [sw, sh] = Array.isArray(c.vi.sps?.vui?.sar) ? c.vi.sps.vui.sar : [1, 1];
+    const par = sw && sh ? sw / sh : 1;
+    const parText = par !== 1 ? ` at pixel aspect ${sw}:${sh}` : '';
     // The display matrix may swap width and height (a 90° rotation); compare the aspect either way.
     const coded = (c.vi.width * par) / c.vi.height;
     const disp = tk.width / tk.height;
     const ok = Math.abs(disp - coded) / coded < 0.02 || Math.abs(1 / disp - coded) / coded < 0.02;
     return ok
-      ? pass(`Display ${fmtNum(tk.width, 0)}×${fmtNum(tk.height, 0)} matches the coded ${c.vi.width}×${c.vi.height}${par !== 1 ? ` at pixel aspect ${sar.w}:${sar.h}` : ''}`, 'Players show the picture at the shape it was coded.', { value: `${tk.width}×${tk.height}` })
-      : warn(`Display ${fmtNum(tk.width, 0)}×${fmtNum(tk.height, 0)} disagrees with the coded ${c.vi.width}×${c.vi.height}${par !== 1 ? ` at pixel aspect ${sar.w}:${sar.h}` : ''}`, 'The container asks for one shape and the bitstream codes another: some players stretch the picture, others ignore the container.', { value: `${tk.width}×${tk.height}`, expected: `${c.vi.width}×${c.vi.height}`, offset: c.v.node.child('tkhd').offset });
+      ? pass(`Display ${fmtNum(tk.width, 0)}×${fmtNum(tk.height, 0)} matches the coded ${c.vi.width}×${c.vi.height}${parText}`, 'Players show the picture at the shape it was coded.', { value: `${tk.width}×${tk.height}` })
+      : warn(`Display ${fmtNum(tk.width, 0)}×${fmtNum(tk.height, 0)} disagrees with the coded ${c.vi.width}×${c.vi.height}${parText}`, 'The container asks for one shape and the bitstream codes another: some players stretch the picture, others ignore the container.', { value: `${tk.width}×${tk.height}`, expected: `${c.vi.width}×${c.vi.height}`, offset: c.v.node.child('tkhd').offset });
   },
 });
 
@@ -451,7 +467,9 @@ defineRule({
     const kids = c.doc.root.children ?? [];
     const problems = [];
     let prevSeq = null;
-    let prevTime = null;
+    // Decode times are continuous per track: a file with one moof per track (ffmpeg's
+    // separate_moof) interleaves the tracks' moofs, each on its own clock.
+    const prevTime = new Map();
     let unpaired = 0;
     for (let i = 0; i < kids.length; i++) {
       const n = kids[i];
@@ -460,9 +478,13 @@ defineRule({
       const seq = n.find?.('mfhd')?.data?.seq;
       if (seq !== undefined && prevSeq !== null && seq !== prevSeq + 1) problems.push(`sequence ${prevSeq} → ${seq} at ${n.offset}`);
       if (seq !== undefined) prevSeq = seq;
-      const t = n.find?.('tfdt')?.data?.time;
-      if (t !== undefined && prevTime !== null && t < prevTime) problems.push(`decode time goes back at ${n.offset}`);
-      if (t !== undefined) prevTime = t;
+      for (const traf of n.childrenOf?.('traf') ?? n.children?.filter((x) => x.type === 'traf') ?? []) {
+        const id = traf.child?.('tfhd')?.data?.trackId ?? traf.find?.('tfhd')?.data?.trackId ?? 0;
+        const t = traf.child?.('tfdt')?.data?.time ?? traf.find?.('tfdt')?.data?.time;
+        if (t === undefined) continue;
+        if (prevTime.has(id) && t < prevTime.get(id)) problems.push(`decode time of track ${id} goes back at ${n.offset}`);
+        prevTime.set(id, t);
+      }
     }
     if (unpaired) problems.push(`${plural(unpaired, 'moof')} not followed by mdat`);
     return problems.length
@@ -532,8 +554,16 @@ defineRule({
 defineRule({
   id: 'audio-priming', category: 'Audio', severity: 'warning', spec: 'priming', clause: 'edit list for the encoder delay',
   title: 'The AAC encoder delay is compensated',
-  applies: (c) => c.a && /AAC/.test(c.audio.codec) && typeof c.a.node?.find === 'function',
+  // MP4 signals the delay with an edit list, Matroska with CodecDelay; other containers have no
+  // way to say it, so the rule stays silent there rather than blame them for it.
+  applies: (c) => c.a && /AAC/.test(c.audio.codec) && ((c.doc.format?.id === 'isobmff' && typeof c.a.node?.find === 'function') || (c.doc.format?.id === 'matroska' && 'codecDelay' in c.a)),
   check: (c) => {
+    if (c.doc.format.id === 'matroska') {
+      const ms = (c.a.codecDelay ?? 0) / 1e6;
+      return ms > 0
+        ? pass(`CodecDelay ${fmtNum(ms, 1)} ms (encoder priming)`, 'Players skip the encoder delay, so audio and video start together.', { value: ms })
+        : warn('No CodecDelay for the encoder priming', 'AAC encoders add 1024–2112 samples of delay; without CodecDelay audio plays 20–50 ms late against the video.', { value: 0, offset: c.a.node?.offset });
+    }
     const elst = c.a.node.find('elst');
     const media = elst?.data?.table?.count ? firstMediaTime(elst.data.table) : 0;
     const ms = (media / (c.a.timescale || 1)) * 1000;
@@ -571,14 +601,18 @@ defineRule({
 });
 
 defineRule({
-  id: 'av-sync', category: 'Audio', severity: 'critical', spec: 'bt1359', clause: 'detectability +45/−125 ms, acceptability +90/−185 ms',
+  id: 'av-sync', category: 'Audio', severity: 'critical', spec: 'bt1359', clause: 'sound may lead vision by 45 ms or lag it by 125 ms before viewers notice; 90 / 185 ms before they object',
   title: 'Audio and video in sync',
   applies: (c) => c.measured.sync?.audioLateMs !== undefined,
   check: (c) => {
+    // audioLateMs > 0: the sound comes after the picture (lags); < 0: before it (leads).
+    // BT.1359 tolerates a lag (sound after light, as in nature) three times more than a lead.
     const ms = c.measured.sync.audioLateMs;
     const title = `Audio ${ms >= 0 ? 'lags' : 'leads'} video by ${fmtNum(Math.abs(ms), 0)} ms`;
     if (Math.abs(ms) <= 22) return pass(title, 'Within a frame.', { value: ms });
-    return (ms <= 45 && ms >= -125 ? warn : fail)(title, 'ITU-R BT.1359: offsets beyond about +45/−125 ms are detectable, beyond +90/−185 ms objectionable.', { value: ms });
+    const detectable = ms > 125 || ms < -45;
+    const objectionable = ms > 185 || ms < -90;
+    return (objectionable ? fail : warn)(title, objectionable ? 'Beyond what ITU-R BT.1359 calls acceptable (+90 ms lead / −185 ms lag): viewers object.' : detectable ? 'Beyond the ITU-R BT.1359 detectability threshold (45 ms lead / 125 ms lag): attentive viewers notice.' : 'Noticeable to a careful viewer but within ITU-R BT.1359\'s detectability threshold.', { value: ms });
   },
 });
 
@@ -728,10 +762,30 @@ defineRule({
   id: 'levels', scope: 'ladder', category: 'Ladder', severity: 'info', spec: 'h264', clause: 'Annex A',
   title: 'Levels down the ladder',
   applies: (l) => l.byHeight.length >= 1,
-  check: (l) => info(`Levels: ${l.byHeight.map((r) => `${r.facts.video.height}p level ${r.facts.video.level ? (r.facts.video.level / 10).toFixed(1) : '?'}`).join(', ')}`, 'What each rendition asks of a decoder.'),
+  check: (l) => info(`Levels: ${l.byHeight.map((r) => `${r.facts.video.height}p level ${r.facts.video.levelName ?? '?'}`).join(', ')}`, 'What each rendition asks of a decoder.'),
 });
 
 // ====================================================================== running the rules
+
+/** "44.1 kHz", "48,000 Hz" or "48000 / s" -> hertz; the number before the unit, nothing else. */
+function rateFromText(text) {
+  const m = /^\s*([\d,]+(?:\.\d+)?)\s*(k?)Hz/i.exec(text ?? '');
+  if (!m) return null;
+  const n = Number(m[1].replace(/,/g, ''));
+  return Number.isFinite(n) && n > 0 ? Math.round(n * (m[2] ? 1000 : 1)) : null;
+}
+
+/** "2 channels: L R", "5.1", "mono", "stereo" -> a channel count. */
+function channelsFromText(text) {
+  const t = String(text ?? '').trim().toLowerCase();
+  if (!t) return null;
+  if (/^mono\b/.test(t)) return 1;
+  if (/^stereo\b/.test(t)) return 2;
+  const lfe = /^(\d+)\.(\d)\b/.exec(t);
+  if (lfe) return Number(lfe[1]) + Number(lfe[2]);
+  const n = /^(\d+)\s*(?:ch|channel)/.exec(t) ?? /^(\d+)$/.exec(t);
+  return n ? Number(n[1]) : null;
+}
 
 function firstMediaTime(tbl) {
   const big = tbl.entrySize === 20;
@@ -759,6 +813,7 @@ async function scanFrames(it, budget, onProgress) {
   }
   const keys = [];
   for (let i = 0; i < s.count; i++) if (!s.key || s.key[i]) keys.push(i);
+  if (keys[0] !== 0) keys.unshift(0);
   keys.push(s.count);
   const gopBytes = (k) => {
     let b = 0;
@@ -766,19 +821,41 @@ async function scanFrames(it, budget, onProgress) {
     return b;
   };
   const n = keys.length - 1;
-  const chosen = new Set([0, 1].filter((k) => k < n));
-  let spent = [...chosen].reduce((b, k) => b + gopBytes(k), 0);
-  // Spread the rest evenly: every m-th GOP while the budget lasts.
-  for (let step = 2; step < n && spent < budget; step = Math.max(step + 1, Math.floor(step * 1.5))) {
-    for (let k = step; k < n && spent < budget; k += step) {
-      if (chosen.has(k)) continue;
-      chosen.add(k);
-      spent += gopBytes(k);
-    }
+  // A window is a GOP, or the start of one when a single GOP is bigger than what is left: the
+  // IDR and the frames after it are what the open-GOP and IDR checks look at.
+  const windows = new Map(); // gop index -> [from, to)
+  let spent = 0;
+  let full = 0;
+  const take = (k) => {
+    if (windows.has(k) || spent >= budget) return false;
+    let to = keys[k];
+    let bytes = 0;
+    // GOP 0 always yields its first frame, whatever the budget; every other window stays
+    // inside what is left.
+    while (to < keys[k + 1] && (spent + bytes + s.sizes[to] <= budget || (k === 0 && to === keys[0]))) bytes += s.sizes[to++];
+    if (to === keys[k]) return false;
+    windows.set(k, [keys[k], to]);
+    if (to === keys[k + 1]) full++;
+    spent += bytes;
+    return true;
+  };
+  take(0);
+  if (n > 1) take(1);
+  // Then evenly over the file: as many GOPs as the budget affords, spaced out, and a finer
+  // pass over what is left, so a long file is sampled from beginning to end rather than
+  // read from the front until the budget runs out.
+  const avg = Math.max(1, ft.scanBytes / n);
+  const afford = Math.max(1, Math.floor((budget - spent) / avg));
+  let step = Math.max(1, Math.floor((n - 2) / afford));
+  while (step >= 1 && spent < budget && windows.size < n) {
+    for (let k = 2 + step - 1; k < n && spent < budget; k += step) take(k);
+    if (step === 1) break;
+    step = Math.floor(step / 2);
   }
-  for (const k of [...chosen].sort((a, b) => a - b)) await ft.ensure(keys[k], keys[k + 1]);
-  onProgress?.(chosen.size, n, 'frame types (sampled GOPs)');
-  return { sampled: ` (${chosen.size} of ${n} GOPs read)`, gops: chosen.size, of: n };
+  for (const [, [from, to]] of [...windows].sort((a, b) => a[0] - b[0])) await ft.ensure(from, to);
+  onProgress?.(windows.size, n, 'frame types (sampled GOPs)');
+  const partial = windows.size - full;
+  return { sampled: ` (${full} of ${n} GOPs read${partial ? `, ${partial} more in part` : ''})`, gops: windows.size, full, of: n };
 }
 
 /**
@@ -835,11 +912,10 @@ export async function auditFile(doc, expect = {}, { onProgress, measured = {}, p
   if (a) {
     const props = Object.fromEntries(a.props ?? []);
     const asc = a.entry?.esds?.asc ?? null;
-    const rateText = props['sample rate'] ?? '';
     c.audio = {
       codec: audioCodecName(a),
-      sampleRate: asc?.extSampleRate || asc?.sampleRate || a.entry?.sampleRate || (Number.parseFloat(rateText.replace(/[^\d.]/g, '')) * (/kHz/.test(rateText) ? 1000 : 1)) || null,
-      channels: asc?.channels || a.entry?.channels || Number.parseInt(props.channels ?? '', 10) || null,
+      sampleRate: asc?.extSampleRate || asc?.sampleRate || a.entry?.sampleRate || a.sampleRate || rateFromText(props['sample rate']),
+      channels: asc?.channels || a.entry?.channels || a.channels || channelsFromText(props.channels),
       bitrate: a.bitrate ?? null,
     };
   }
@@ -856,8 +932,8 @@ export async function auditFile(doc, expect = {}, { onProgress, measured = {}, p
   const facts = {
     name: doc.name, size: doc.size, format: doc.format?.id ?? null, duration: it.duration ?? null,
     bytesRead: doc.source?.stats?.bytes ?? null,
-    payload: scan.gops != null ? { gopsRead: scan.gops, gops: scan.of } : null,
-    video: v ? { codec: videoCodecName(it), width: vi.width, height: vi.height, fps: it.fps, profile: vi.profileName ?? null, level: vi.level ?? null, depth: vi.depth ?? null, bitrate: it.rate?.avg ?? null, peak: it.rate?.peak ?? null, gop: c.gop?.avgSeconds ?? null, bpp: it.bpp ?? null, colour: c.colour?.text ?? null, timescale: v.timescale ?? null } : null,
+    payload: scan.gops != null ? { gopsRead: scan.gops, gopsFull: scan.full, gops: scan.of } : null,
+    video: v ? { codec: videoCodecName(it), width: vi.width, height: vi.height, fps: it.fps, profile: vi.profileName ?? null, level: vi.level ?? null, levelName: c.lvl?.signalled?.name ?? null, depth: vi.depth ?? null, bitrate: it.rate?.avg ?? null, peak: it.rate?.peak ?? null, gop: c.gop?.avgSeconds ?? null, bpp: it.bpp ?? null, colour: c.colour?.text ?? null, timescale: v.timescale ?? null } : null,
     audio: c.audio,
     encoder: c.parsed ? { label: c.parsed.label, version: c.parsed.version, crf: c.rc?.crf ?? null, maxrate: c.rc?.maxrate ?? null, bufsize: c.rc?.bufsize ?? null, keyint: c.parsed.get('keyint') ?? null } : null,
   };
@@ -865,7 +941,8 @@ export async function auditFile(doc, expect = {}, { onProgress, measured = {}, p
 }
 
 function finish(rule, res) {
-  const out = { id: rule.id, category: rule.category, level: res.level, title: res.title, text: res.text, spec: rule.spec, clause: rule.clause ?? null };
+  // A check may name a more specific source than its rule (the level tables of the codec at hand).
+  const out = { id: rule.id, category: rule.category, level: res.level, title: res.title, text: res.text, spec: res.spec ?? rule.spec, clause: res.clause ?? rule.clause ?? null };
   if (res.level === 'warn' || res.level === 'fail') out.severity = rule.severity === 'critical' && res.level === 'fail' ? 'CRITICAL' : rule.severity === 'info' ? 'INFO' : 'WARNING';
   for (const k of ['value', 'expected', 'offset']) if (res[k] !== undefined) out[k] = res[k];
   if (out.severity) {
@@ -875,11 +952,12 @@ function finish(rule, res) {
   return out;
 }
 
-/** The sample whose second is the busiest (rateStats gives the second, in bins of one second). */
+/** The first sample of the busiest second (rateStats counts seconds from the first decode time). */
 function peakSampleIndex(v, peakAt) {
   const s = v.samples;
-  const ts = s.timescale || v.timescale || 1;
-  for (let i = 0; i < s.count; i++) if (s.dts && s.dts[i] / ts >= peakAt) return i;
+  const ts = v.timescale || s.timescale || 1;
+  if (!s.dts) return 0;
+  for (let i = 0; i < s.count; i++) if ((s.dts[i] - s.dts[0]) / ts >= peakAt) return i;
   return 0;
 }
 
@@ -915,25 +993,31 @@ export function tally(checks) {
   return t;
 }
 
-/** A Markdown report of the audited files and, if any, their ladder. */
-export function auditMarkdown(results, ladder = null, { title = 'Vidscope audit' } = {}) {
+/** A Markdown report of the audited files and their ladders (one, several, or none). */
+export function auditMarkdown(results, ladders = null, { title = 'Vidscope audit' } = {}) {
+  const list = Array.isArray(ladders) ? ladders : ladders ? [ladders] : [];
   const lines = [`# ${title}`, ''];
   const mark = { pass: '✓', warn: '⚠', fail: '✗', info: 'ℹ', skip: '–' };
-  const all = [...results.flatMap((r) => r.checks), ...(ladder?.checks ?? [])];
+  const all = [...results.flatMap((r) => r.checks), ...list.flatMap((l) => l.checks ?? [])];
   const t = tally(all);
   lines.push(`${plural(results.length, 'file')}: ${t.fail} failed (${t.critical} critical), ${t.warn} warnings, ${t.pass} passed${t.compliance !== null ? `; ${fmtNum(t.compliance * 100, 1)} % of the pass/fail checks pass` : ''}.`, '');
   const line = (c) => `- ${mark[c.level]} **${c.title}** — ${c.text}${c.remedy ? `\n  - fix: ${c.remedy.fix}` : ''} _(${SPECS[c.spec]?.name ?? c.spec}${c.clause ? `, ${c.clause}` : ''})_`;
-  if (ladder?.checks?.length) {
-    lines.push('## Ladder', '');
-    for (const c of ladder.checks) lines.push(line(c));
+  for (const l of list) {
+    if (!l.checks?.length) continue;
+    lines.push(list.length > 1 || l.files?.length ? `## Ladder: ${(l.files ?? []).join(', ')}` : '## Ladder', '');
+    for (const c of l.checks) lines.push(line(c));
     lines.push('');
   }
   const order = ['fail', 'warn', 'pass', 'info', 'skip'];
   for (const r of results) {
     const f = r.facts;
     lines.push(`## ${r.file}`, '');
+    if (r.error) {
+      lines.push(`Could not be audited: ${r.error}`, '');
+      continue;
+    }
     const bits = [];
-    if (f.video) bits.push(`${f.video.codec} ${f.video.width}×${f.video.height} ${f.video.fps ? `${fmtNum(f.video.fps, 3)} fps` : ''} ${f.video.profile ?? ''}${f.video.level ? ` level ${(f.video.level / 10).toFixed(1)}` : ''}`.replace(/\s+/g, ' ').trim(), `${fmtBitrate(f.video.bitrate)} average`);
+    if (f.video) bits.push(`${f.video.codec} ${f.video.width}×${f.video.height} ${f.video.fps ? `${fmtNum(f.video.fps, 3)} fps` : ''} ${f.video.profile ?? ''}${f.video.levelName ? ` level ${f.video.levelName}` : ''}`.replace(/\s+/g, ' ').trim(), `${fmtBitrate(f.video.bitrate)} average`);
     if (f.audio) bits.push(`${f.audio.codec}${f.audio.sampleRate ? ` ${fmtInt(f.audio.sampleRate)} Hz` : ''}${f.audio.channels ? ` ${plural(f.audio.channels, 'channel')}` : ''}${f.audio.bitrate ? ` ${fmtBitrate(f.audio.bitrate)}` : ''}`);
     if (f.duration) bits.push(fmtDuration(f.duration));
     if (f.bytesRead) bits.push(`${fmtNum(f.bytesRead / 1048576, 1)} MB read${f.payload ? ` (${f.payload.gopsRead} of ${f.payload.gops} GOPs)` : ''}`);
