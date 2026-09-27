@@ -315,6 +315,72 @@ test('brands, display size, the declared VBV and HDR metadata are judged from th
   hdr._close();
 });
 
+/** A server scripted per request: handler(req, res, n) with n counting from 0. */
+function scripted(handler) {
+  let n = 0;
+  const server = http.createServer((req, res) => handler(req, res, n++));
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({
+    url: `http://127.0.0.1:${server.address().port}/x.mp4`,
+    reset: () => { n = 0; },
+    close: () => new Promise((r) => { server.closeAllConnections?.(); server.close(r); }),
+  })));
+}
+
+test('a retry is judged on its own status: a whole-file answer after a failed range read meets the size cap', async () => {
+  const bytes = Buffer.from('0123456789');
+  // First answer: a 206 whose body dies after the headers. Second: the whole file with 200.
+  const s = await scripted((req, res, n) => {
+    if (n % 2 === 0) {
+      res.writeHead(206, { 'content-range': 'bytes 5-6/10', 'content-length': 2 });
+      res.flushHeaders();
+      setTimeout(() => res.socket.destroy(), 20);
+      return;
+    }
+    res.writeHead(200, { 'content-length': bytes.length });
+    res.end(bytes);
+  });
+  try {
+    const capped = new HttpSource(s.url, 10, 'x.mp4', { retries: 1, timeoutMs: 2000, maxWholeFile: 5 });
+    await assert.rejects(() => capped.readRaw(5, 2), (e) => e.code === 'NO_RANGE_SUPPORT', 'a 10-byte whole-file retry is refused under a 5-byte cap');
+    s.reset();
+    const open = new HttpSource(s.url, 10, 'x.mp4', { retries: 1, timeoutMs: 2000, maxWholeFile: 64 });
+    const got = await open.readRaw(5, 2);
+    assert.equal(Buffer.from(got).toString(), '56', 'the two bytes asked for, not the whole file');
+    assert.equal(open.stats.wholeFile, true);
+  } finally {
+    await s.close();
+  }
+});
+
+test('a server that sends headers and then nothing cannot hold a read', async () => {
+  const s = await scripted((req, res) => {
+    res.writeHead(206, { 'content-range': 'bytes 0-1/10', 'content-length': 2 });
+    res.flushHeaders();
+    // ... and never a byte of the body.
+  });
+  try {
+    const src = new HttpSource(s.url, 10, 'x.mp4', { retries: 0, timeoutMs: 200 });
+    const t0 = Date.now();
+    await assert.rejects(() => src.readRaw(0, 2));
+    assert.ok(Date.now() - t0 < 3000, `gave up after ${Date.now() - t0} ms`);
+  } finally {
+    await s.close();
+  }
+});
+
+test('a range answer that starts elsewhere is refused', async () => {
+  const s = await scripted((req, res) => {
+    res.writeHead(206, { 'content-range': 'bytes 0-1/10', 'content-length': 2 });
+    res.end('01');
+  });
+  try {
+    const src = new HttpSource(s.url, 10, 'x.mp4', { retries: 0, timeoutMs: 2000 });
+    await assert.rejects(() => src.readRaw(5, 2), (e) => e.code === 'BAD_RANGE');
+  } finally {
+    await s.close();
+  }
+});
+
 /** A small server that honours Range (or ignores it, or hides the total, to test the fallbacks). */
 function serve(file, { ranges = true, total = true } = {}) {
   const bytes = fs.readFileSync(file);

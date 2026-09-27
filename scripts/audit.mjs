@@ -303,7 +303,7 @@ export function ladderKey(input) {
  * SHA-256 of the index (the moov box) and of each byte range of frame data the audit read,
  * so that two reads of the same file, from two nodes or an hour apart, can be compared.
  */
-async function digests(doc, facts) {
+export async function digests(doc, facts) {
   const { createHash } = await import('node:crypto');
   const sha = (u8) => createHash('sha256').update(u8).digest('hex');
   const out = {};

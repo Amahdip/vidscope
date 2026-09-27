@@ -41,8 +41,8 @@ export class HttpSource {
    * Open a URL: the size comes from the Content-Range of a one-byte range request (every
    * server that supports ranges answers it), else from Content-Length of a HEAD.
    */
-  static async open(url, { headers = {}, name, retries = 3, timeoutMs = 30000 } = {}) {
-    const src = new HttpSource(url, 0, name ?? 'remote', { headers, retries, timeoutMs });
+  static async open(url, { headers = {}, name, retries = 3, timeoutMs = 30000, maxWholeFile } = {}) {
+    const src = new HttpSource(url, 0, name ?? 'remote', { headers, retries, timeoutMs, ...(maxWholeFile ? { maxWholeFile } : {}) });
     const res = await src.request({ headers: { ...headers, Range: 'bytes=0-0' } }, 'the size');
     let size = null;
     const cr = res.headers.get('content-range');
@@ -53,11 +53,12 @@ export class HttpSource {
       const len = res.headers.get('content-length');
       if (len) size = Number(len);
     }
-    if (res.body?.cancel) await res.body.cancel().catch(() => {});
+    await res.release();
     if (size === null) {
       // A 206 whose Content-Range gives no total ("bytes 0-0/*"): ask the HEAD.
       const head = await src.request({ method: 'HEAD', headers }, 'the size');
       const len = head.headers.get('content-length');
+      await head.release();
       if (!len) throw new Error(`HTTP ${head.status}: cannot find the size of ${url}`);
       size = Number(len);
     }
@@ -74,65 +75,85 @@ export class HttpSource {
   }
 
   /**
-   * One HTTP request with the retry policy: 429 and 5xx are retried with backoff, other errors
-   * are final; a request that produces no bytes for timeoutMs is abandoned. The timeout is an
-   * idle timeout, reset by every chunk, so a slow but moving download is never cut short and
-   * then downloaded again.
+   * One HTTP request with the retry policy for its status: 429 and 5xx are retried with
+   * backoff, other errors are final. The response comes back with its idle timer still armed:
+   * body() re-arms it on every chunk and clears it at the end, release() clears it when the body
+   * is not wanted. A server that sends headers and then nothing therefore cannot hold the
+   * caller: after timeoutMs without a byte the request is aborted.
    */
   async request(init, what) {
     let lastError = null;
     for (let attempt = 0; attempt <= this.retries; attempt++) {
-      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
-      let timer = null;
-      const arm = () => {
-        if (!ctl) return;
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(() => ctl.abort(), this.timeoutMs);
-      };
       try {
-        this.stats.requests++;
-        arm();
-        const res = await fetch(this.url, { ...init, signal: ctl?.signal });
-        if (res.status === 429 || res.status >= 500) throw new Error(`HTTP ${res.status} while reading ${what}`);
-        if (!res.ok) {
-          const err = new Error(`HTTP ${res.status} while reading ${what}`);
-          err.fatal = true;
-          throw err;
-        }
-        res.arm = arm;
-        return res;
+        return await this.attempt(init, what);
       } catch (e) {
         lastError = e;
         if (e.fatal || attempt === this.retries) break;
         this.stats.retries++;
         await new Promise((r) => setTimeout(r, 250 * 2 ** attempt));
-      } finally {
-        if (timer) clearTimeout(timer);
       }
     }
     throw lastError;
   }
 
+  async attempt(init, what) {
+    const ctl = new AbortController();
+    let timer = null;
+    const arm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => ctl.abort(new Error(`no data for ${this.timeoutMs} ms while reading ${what}`)), this.timeoutMs);
+    };
+    const done = () => clearTimeout(timer);
+    this.stats.requests++;
+    arm();
+    let res;
+    try {
+      res = await fetch(this.url, { ...init, signal: ctl.signal });
+    } catch (e) {
+      done();
+      throw e;
+    }
+    if (!res.ok) {
+      done();
+      await res.body?.cancel?.().catch(() => {});
+      const err = new Error(`HTTP ${res.status} while reading ${what}`);
+      if (res.status !== 429 && res.status < 500) err.fatal = true;
+      throw err;
+    }
+    arm(); // a fresh idle window for the body
+    res.arm = arm;
+    res.done = done;
+    res.release = async () => {
+      done();
+      await res.body?.cancel?.().catch(() => {});
+    };
+    return res;
+  }
+
   /** The whole body of a response, resetting the idle timer as chunks arrive. */
   static async body(res) {
-    if (!res.body?.getReader) return new Uint8Array(await res.arrayBuffer());
-    const reader = res.body.getReader();
-    const parts = [];
-    let total = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      res.arm?.();
-      parts.push(value);
-      total += value.length;
+    try {
+      if (!res.body?.getReader) return new Uint8Array(await res.arrayBuffer());
+      const reader = res.body.getReader();
+      const parts = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.arm?.();
+        parts.push(value);
+        total += value.length;
+      }
+      const out = new Uint8Array(total);
+      let w = 0;
+      for (const p of parts) {
+        out.set(p, w);
+        w += p.length;
+      }
+      return out;
+    } finally {
+      res.done?.();
     }
-    const out = new Uint8Array(total);
-    let w = 0;
-    for (const p of parts) {
-      out.set(p, w);
-      w += p.length;
-    }
-    return out;
   }
 
   async readRaw(offset, length) {
@@ -140,34 +161,50 @@ export class HttpSource {
     // serve every later read from it rather than download the file for each read.
     if (this.whole) return this.whole.subarray(offset, offset + length);
     const last = offset + length - 1;
-    const res = await this.request({ headers: { ...this.headers, Range: `bytes=${offset}-${last}` } }, `bytes ${offset}-${last}`);
-    if (res.status === 200) {
-      // The whole file is coming. Refuse it above the cap before it is downloaded.
-      const len = Number(res.headers.get('content-length') ?? this.size);
-      if (len > this.maxWholeFile) {
-        if (res.body?.cancel) await res.body.cancel().catch(() => {});
-        const err = new Error(`${this.url} does not support range requests and is ${len} bytes: refusing to download it whole`);
-        err.code = 'NO_RANGE_SUPPORT';
-        err.fatal = true;
-        throw err;
+    const what = `bytes ${offset}-${last}`;
+    const fatal = (message, code) => Object.assign(new Error(message), { fatal: true, code });
+    let lastError = null;
+    // A body can fail after good headers. The whole request is then made again, and each
+    // response is judged on its own status: a retry that comes back 200 goes through the
+    // same size guard as a first answer would.
+    for (let attempt = 0; attempt <= this.retries; attempt++) {
+      const res = await this.request({ headers: { ...this.headers, Range: `bytes=${offset}-${last}` } }, what);
+      try {
+        if (res.status === 200) {
+          // The whole file is coming. Refuse it above the cap before it is downloaded.
+          const len = Number(res.headers.get('content-length') ?? this.size);
+          if (!(len <= this.maxWholeFile)) {
+            await res.release();
+            throw fatal(`${this.url} does not support range requests and is ${len} bytes: refusing to download it whole`, 'NO_RANGE_SUPPORT');
+          }
+          const buf = await HttpSource.body(res);
+          this.stats.bytes += buf.length;
+          this.whole = buf;
+          this.stats.wholeFile = true;
+          return buf.subarray(offset, offset + length);
+        }
+        if (res.status === 206) {
+          // The range must start where it was asked to.
+          const m = /bytes\s+(\d+)-(\d+)/.exec(res.headers.get('content-range') ?? '');
+          if (m && Number(m[1]) !== offset) {
+            await res.release();
+            throw fatal(`${this.url} answered bytes ${m[1]}-${m[2]} to a request for ${offset}-${last}`, 'BAD_RANGE');
+          }
+          const buf = await HttpSource.body(res);
+          this.stats.bytes += buf.length;
+          return buf.length > length ? buf.subarray(0, length) : buf;
+        }
+        await res.release();
+        throw fatal(`HTTP ${res.status} while reading ${what}`, 'UNEXPECTED_STATUS');
+      } catch (e) {
+        if (e.fatal) throw e;
+        lastError = e;
+        if (attempt === this.retries) break;
+        this.stats.retries++;
+        await new Promise((r) => setTimeout(r, 250 * 2 ** attempt));
       }
     }
-    let buf;
-    try {
-      buf = await HttpSource.body(res);
-    } catch {
-      // The body stalled or the connection dropped after the headers: one more try, whole.
-      const again = await this.request({ headers: { ...this.headers, Range: `bytes=${offset}-${last}` } }, `bytes ${offset}-${last}`);
-      buf = await HttpSource.body(again);
-    }
-    this.stats.bytes += buf.length;
-    // A server that ignores Range answers 200 with the whole file.
-    if (res.status === 200) {
-      this.whole = buf;
-      this.stats.wholeFile = true;
-      return buf.subarray(offset, offset + length);
-    }
-    return buf;
+    throw lastError;
   }
 }
 
