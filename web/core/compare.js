@@ -40,7 +40,7 @@ function trackRate(t) {
 }
 
 /** Everything the comparison needs about one file, from its opened Doc. */
-export async function summarize(doc, { onProgress } = {}) {
+export async function summarize(doc, { onProgress, scan = true } = {}) {
   if (doc.loadSamples) await doc.loadSamples(onProgress);
   const video = doc.tracks.find((t) => t.kind === 'video' && t.samples?.count) ?? null;
   const item = {
@@ -54,7 +54,9 @@ export async function summarize(doc, { onProgress } = {}) {
   if (!item.duration) item.duration = doc.tracks.reduce((m, t) => Math.max(m, trackSeconds(t)), 0) || null;
   if (!video) return item;
   const ft = frameTypes(doc, video);
-  if (ft.ctx && !ft.complete && ft.scanBytes <= AUTO_SCAN_BYTES) {
+  // A caller that reads the payload in its own way (the audit, under a byte budget) asks for
+  // no scan here; the sample tables alone give key frames, sizes and times.
+  if (scan && ft.ctx && !ft.complete && ft.scanBytes <= AUTO_SCAN_BYTES) {
     const off = onProgress ? ft.onChange((f) => onProgress(f.scanned, f.count, 'reading frame types')) : null;
     await ft.ensure();
     off?.();

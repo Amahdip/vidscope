@@ -170,6 +170,27 @@ Options: `--port <n>` (default 8766; the next free port is used if taken), `--ho
 The server binds to localhost, answers only requests addressed to localhost (a DNS
 rebinding guard), and only serves the files you named.
 
+### Auditing files
+
+`vidscope audit` checks files against the streaming standards without a browser, and files
+that are versions of one content (`movie-1080p.mp4`, `movie-720p.mp4`, …) together as a
+ladder: about 50 rules from the HLS authoring specification, RFC 8216, H.264 Annex A, H.273,
+ISO 14496-12/CMAF, Apple's audio-priming note, EBU R 128 and ITU-R BT.1359, each with a
+severity, the byte offset it is about, and the FFmpeg change that usually fixes it.
+
+```bash
+node bin/vidscope.js audit --expect gop=5,fpsMax=60,colour=1/1/1 --md report.md movie-*.mp4
+```
+
+Inputs can be URLs: the index is read with HTTP range requests and only a budget of frame
+data follows (`--budget <MB>`, 32 by default), so a long file costs a few megabytes, not a
+download. `--expect` states what the service intends (GOP length, frame-rate range, colour
+description, audio codec and sample rate, loudness target); without it the rules check only
+what the standards say. `--json` writes a report ([docs/audit-report.schema.json](docs/audit-report.schema.json)),
+`--sarif` a SARIF log, `--measure` adds ffmpeg loudness and, with `--source`, PSNR/SSIM
+against the original. `--rules` lists the rules. The exit code is 2 on a critical finding,
+1 on a warning.
+
 ### Keyboard
 
 | Key | Action |

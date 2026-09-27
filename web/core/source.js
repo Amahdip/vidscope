@@ -19,20 +19,85 @@ export class BlobSource {
 }
 
 export class HttpSource {
-  constructor(url, size, name) {
+  /**
+   * Byte ranges of a URL. `headers` go on every request (a token, a proxy hint); a read that
+   * fails or hangs is retried a few times, because one lost request must not fail an audit
+   * that has already read most of a file.
+   */
+  constructor(url, size, name, { headers = {}, retries = 3, timeoutMs = 30000 } = {}) {
     this.url = url;
     this.size = size;
     this.name = name;
+    this.headers = headers;
+    this.retries = retries;
+    this.timeoutMs = timeoutMs;
+    this.stats = { requests: 0, bytes: 0, retries: 0 };
+  }
+
+  /**
+   * Open a URL: the size comes from the Content-Range of a one-byte range request (every
+   * server that supports ranges answers it), else from Content-Length of a HEAD.
+   */
+  static async open(url, { headers = {}, name, retries, timeoutMs } = {}) {
+    const opts = { headers: { ...headers, Range: 'bytes=0-0' } };
+    const res = await fetch(url, opts);
+    let size = null;
+    const cr = res.headers.get('content-range');
+    const m = cr && /\/(\d+)\s*$/.exec(cr);
+    if (res.status === 206 && m) size = Number(m[1]);
+    else if (res.ok) {
+      // No range support: Content-Length of the whole file, and every read will fetch it all.
+      const len = res.headers.get('content-length');
+      if (len) size = Number(len);
+    }
+    if (res.body?.cancel) await res.body.cancel().catch(() => {});
+    if (size === null) {
+      const head = await fetch(url, { method: 'HEAD', headers });
+      const len = head.headers.get('content-length');
+      if (!head.ok || !len) throw new Error(`HTTP ${head.status}: cannot find the size of ${url}`);
+      size = Number(len);
+    }
+    const base = name ?? decodeURIComponent(new URL(url).pathname.split('/').pop() || 'remote');
+    return new HttpSource(url, size, base, { headers, retries, timeoutMs });
   }
 
   async readRaw(offset, length) {
+    // A server that ignored Range once will ignore it again: keep the body it sent and
+    // serve every later read from it rather than download the file for each read.
+    if (this.whole) return this.whole.subarray(offset, offset + length);
     const last = offset + length - 1;
-    const res = await fetch(this.url, { headers: { Range: `bytes=${offset}-${last}` } });
-    if (!res.ok) throw new Error(`HTTP ${res.status} while reading bytes ${offset}-${last}`);
-    const buf = new Uint8Array(await res.arrayBuffer());
-    // A server that ignores Range sends the whole file.
-    if (res.status === 200 && (offset > 0 || buf.length > length)) return buf.subarray(offset, offset + length);
-    return buf;
+    let lastError = null;
+    for (let attempt = 0; attempt <= this.retries; attempt++) {
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = ctl ? setTimeout(() => ctl.abort(), this.timeoutMs) : null;
+      try {
+        this.stats.requests++;
+        const res = await fetch(this.url, { headers: { ...this.headers, Range: `bytes=${offset}-${last}` }, signal: ctl?.signal });
+        if (res.status === 429 || res.status >= 500) throw new Error(`HTTP ${res.status} while reading bytes ${offset}-${last}`);
+        if (!res.ok) {
+          const err = new Error(`HTTP ${res.status} while reading bytes ${offset}-${last}`);
+          err.fatal = true;
+          throw err;
+        }
+        const buf = new Uint8Array(await res.arrayBuffer());
+        this.stats.bytes += buf.length;
+        // A server that ignores Range answers 200 with the whole file.
+        if (res.status === 200) {
+          this.whole = buf;
+          this.stats.wholeFile = true;
+          return buf.subarray(offset, offset + length);
+        }
+        return buf;
+      } catch (e) {
+        lastError = e;
+        if (e.fatal || attempt === this.retries) break;
+        this.stats.retries++;
+        await new Promise((r) => setTimeout(r, 250 * 2 ** attempt));
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+    throw lastError;
   }
 }
 
