@@ -35,7 +35,7 @@ export const SPECS = {
  *   gop: seconds between key frames (exact); gopMax: the longest allowed
  *   fpsMax, fpsMin: the frame-rate range; peakRatio: busiest second ÷ average, at most
  *   colour: { primaries, transfer, matrix } expected in the VUI (1/1/1 for BT.709)
- *   audio: { codec: 'AAC LC', sampleRate, channelsMax, minBitratePerChannel }
+ *   audio: { required, codec: 'AAC LC', sampleRate, channelsMax, minBitratePerChannel }
  *   loudness: { integrated (LUFS), tolerance (LU), truePeakMax (dBTP) }, for measured loudness
  *   segments: segment lengths (s) the ladder must support
  */
@@ -120,7 +120,7 @@ defineRule({
   id: 'has-audio', category: 'Container', severity: 'critical', spec: 'hlsAuth', clause: 'audio in every variant',
   title: 'Audio is present',
   applies: (c) => c.audios.length === 0,
-  check: (c) => (c.ex.audio ? fail('No audio track', 'The service expects every rendition to carry audio.') : info('No audio track', 'A silent rendition.')),
+  check: (c) => (c.ex.audio?.required ? fail('No audio track', 'The service expects every rendition to carry audio.') : info('No audio track', 'A silent rendition; sources without sound produce these.')),
 });
 
 defineRule({
@@ -621,13 +621,16 @@ defineRule({
 defineRule({
   id: 'label-matches-size', scope: 'ladder', category: 'Ladder', severity: 'warning', spec: 'practice', clause: 'rendition names',
   title: 'Rendition names match their picture size',
-  applies: (l) => l.results.some((r) => /(\d{3,4})p/i.test(r.file)),
+  applies: (l) => l.results.some((r) => /\d{3,4}p/i.test(r.file)),
   check: (l) => {
+    // The rendition's own label is the last "NNNp" before the extension: a name that carries
+    // the source size as well (clip-2160p-1080p.mp4) is judged on the 1080p.
+    const label = (name) => [...name.replace(/\.\w+$/, '').matchAll(/(\d{3,4})p(?![a-z])/gi)].pop()?.[1];
     const off = [];
     for (const r of l.results) {
-      const m = /(\d{3,4})p/i.exec(r.file);
+      const m = label(r.file);
       const { width: w, height: h } = r.facts.video ?? {};
-      if (m && w && h && Number(m[1]) !== Math.min(w, h)) off.push(`${r.file}: labelled ${m[1]}p, is ${w}×${h}`);
+      if (m && w && h && Number(m) !== Math.min(w, h)) off.push(`${r.file}: labelled ${m}p, is ${w}×${h}`);
     }
     return off.length ? warn(off.join('; '), 'A rendition name that does not match the picture size misleads players, manifests and people.', { value: off }) : pass('Rendition names match their sizes', 'What the name says is what the file holds.');
   },
