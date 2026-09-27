@@ -131,6 +131,58 @@ test('fragments are checked per track, so one moof per track is continuous', { s
   }
 });
 
+test('a service\'s overlay caps levels per rendition and promotes severities', { skip: !haveLadder }, async () => {
+  const doc = await open('ladder-270p.mp4');
+  const signalled = Number((await auditFile(doc, {})).facts.video.levelName);
+  const below = (signalled - 0.1).toFixed(1);
+  const overlay = { severity: { vbv: 'critical', 'gop-length': 'info' }, levelCap: [{ height: 480, fpsMax: 30, level: below }, { height: 1080, fpsMax: 60, level: '4.2' }] };
+  const r = await auditFile(doc, { gop: 2, overlay });
+  const lp = byId(r.checks, 'level-policy');
+  assert.equal(lp.level, 'fail', `the sample signals level ${signalled}, above a cap of ${below}`);
+  assert.equal(lp.severity, 'CRITICAL');
+  const ok = await auditFile(doc, { overlay: { levelCap: [{ height: 480, fpsMax: 30, level: String(signalled) }] } });
+  assert.equal(byId(ok.checks, 'level-policy').level, 'pass', 'a cap at the signalled level passes');
+  assert.equal(byId(r.checks, 'gop-length').level, 'fail', 'a 1 s GOP is not the 2 s expected');
+  assert.equal(byId(r.checks, 'gop-length').severity, 'INFO', 'demoted by the overlay');
+  const plain = await auditFile(doc, { gop: 2 });
+  assert.equal(byId(plain.checks, 'level-policy'), undefined, 'no cap, no rule');
+  assert.equal(byId(plain.checks, 'gop-length').severity, 'WARNING');
+  assert.ok(r.facts.index.size > 0 && r.facts.index.offset >= 0, 'the index location is in the facts');
+  doc._close();
+});
+
+test('expectation keys are validated, budgets apply per input, digests name the bytes read', { skip: !haveLadder }, async () => {
+  const { validateExpect } = await import('../scripts/audit.mjs');
+  assert.throws(() => validateExpect({ gopLength: 5 }), /unknown expectation gopLength/);
+  assert.throws(() => validateExpect({ audio: { sampleRate: '44100' } }), /audio.sampleRate wants a number/);
+  assert.throws(() => validateExpect({ overlay: { levelCap: {} } }), /overlay.levelCap wants a list/);
+  assert.deepEqual(validateExpect({ _comment: 'x', gop: 5, audio: { required: false } }), { _comment: 'x', gop: 5, audio: { required: false } });
+  const out = await auditInputs({ inputs: [sample('ladder-270p.mp4'), sample('ladder-180p.mp4')], headers: {}, expect: {}, ladder: false, budget: [16 * 1024, 0], digest: true, measure: false }, () => {});
+  const [a, b] = out.results;
+  assert.ok(a.facts.payload && a.facts.payload.gopsRead < a.facts.payload.gops, 'the first input got the small budget');
+  assert.equal(b.facts.payload, null, 'the second input read everything');
+  assert.match(a.facts.digest.index, /^[0-9a-f]{64}$/);
+  assert.ok(a.facts.digest.ranges.length >= 1 && a.facts.digest.ranges.every((x) => /^[0-9a-f]{64}$/.test(x.sha256) && x.to > x.from));
+  const again = await auditInputs({ inputs: [sample('ladder-270p.mp4')], headers: {}, expect: {}, ladder: false, budget: [16 * 1024], digest: true, measure: false }, () => {});
+  assert.deepEqual(again.results[0].facts.digest, a.facts.digest, 'the same bytes give the same digests');
+});
+
+test('a large file on a server that ignores Range is refused, not downloaded', { skip: !haveLadder }, async () => {
+  const s = await serve(sample('ladder-180p.mp4'), { ranges: false });
+  try {
+    const src = await HttpSource.open(s.url);
+    src.maxWholeFile = 1024;
+    await assert.rejects(() => openDocument(src), (e) => e.code === 'NO_RANGE_SUPPORT');
+    assert.ok(src.stats.bytes < s.size, 'nothing beyond the probe was fetched');
+    // Below the cap the whole-file fallback still serves small files.
+    const small = await HttpSource.open(s.url);
+    const doc = await openDocument(small);
+    assert.equal(byId((await auditFile(doc, {})).checks, 'fast-start').level, 'pass');
+  } finally {
+    await s.close();
+  }
+});
+
 test('the frame budget spreads the GOPs it reads over the whole file', { skip: !haveLadder }, async () => {
   const doc = await open('ladder-source.mkv');
   const r = await auditFile(doc, {}, { payloadBudget: 1 });

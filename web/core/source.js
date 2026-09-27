@@ -24,13 +24,16 @@ export class HttpSource {
    * fails or hangs is retried a few times, because one lost request must not fail an audit
    * that has already read most of a file.
    */
-  constructor(url, size, name, { headers = {}, retries = 3, timeoutMs = 30000 } = {}) {
+  constructor(url, size, name, { headers = {}, retries = 3, timeoutMs = 30000, maxWholeFile = 64 * 1024 * 1024 } = {}) {
     this.url = url;
     this.size = size;
     this.name = name;
     this.headers = headers;
     this.retries = retries;
     this.timeoutMs = timeoutMs;
+    // A server that ignores Range sends the whole file; above this size that is refused
+    // rather than downloaded and kept in memory (error code NO_RANGE_SUPPORT).
+    this.maxWholeFile = maxWholeFile;
     this.stats = { requests: 0, bytes: 0, retries: 0 };
   }
 
@@ -138,6 +141,17 @@ export class HttpSource {
     if (this.whole) return this.whole.subarray(offset, offset + length);
     const last = offset + length - 1;
     const res = await this.request({ headers: { ...this.headers, Range: `bytes=${offset}-${last}` } }, `bytes ${offset}-${last}`);
+    if (res.status === 200) {
+      // The whole file is coming. Refuse it above the cap before it is downloaded.
+      const len = Number(res.headers.get('content-length') ?? this.size);
+      if (len > this.maxWholeFile) {
+        if (res.body?.cancel) await res.body.cancel().catch(() => {});
+        const err = new Error(`${this.url} does not support range requests and is ${len} bytes: refusing to download it whole`);
+        err.code = 'NO_RANGE_SUPPORT';
+        err.fatal = true;
+        throw err;
+      }
+    }
     let buf;
     try {
       buf = await HttpSource.body(res);

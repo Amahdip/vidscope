@@ -37,7 +37,9 @@ Options
   --ladder               audit every input as one ladder (default: group renditions by name)
   --no-ladder            never group
   --header "K: V"        HTTP header for URL inputs and a URL --source (repeatable)
-  --budget <MB>          frame data to read per file (default: 32 for URLs, all for files)
+  --budget <MB[,MB...]>  frame data to read per input, in order (the last value repeats;
+                         default: 32 for URLs, all for files), e.g. 32,32,8,8,8,8 for a ladder
+  --digest               SHA-256 of the index and of every byte range read, in facts.digest
   --measure              run ffmpeg: loudness (ebur128) and, with --source, PSNR/SSIM
   --source <file|url>    the source the inputs were converted from, for --measure
   --rules                list the rules and exit
@@ -49,6 +51,30 @@ be audited (the other inputs still are), 64 for a usage error, 70 when ffmpeg wa
 but could not run.
 `;
 
+// The keys the rules read. A misspelt key would silently check nothing, so it is an error.
+const EXPECT_KEYS = {
+  gop: 'number', gopMax: 'number', fpsMax: 'number', fpsMin: 'number', peakRatio: 'number', segments: 'array',
+  colour: { primaries: 'number', transfer: 'number', matrix: 'number' },
+  audio: { required: 'boolean', codec: 'string', sampleRate: 'number', channelsMax: 'number', minBitratePerChannel: 'number' },
+  loudness: { integrated: 'number', tolerance: 'number', truePeakMax: 'number' },
+  overlay: { severity: 'object', levelCap: 'array' },
+};
+
+/** Throw on a key the rules do not read, or a value of the wrong kind; keys starting with _ are comments. */
+export function validateExpect(ex, shape = EXPECT_KEYS, path = '') {
+  for (const [k, v] of Object.entries(ex ?? {})) {
+    if (k.startsWith('_')) continue;
+    const want = shape[k];
+    const at = path ? `${path}.${k}` : k;
+    if (want === undefined) throw new Error(`unknown expectation ${at} (known: ${Object.keys(shape).join(', ')})`);
+    if (typeof want === 'object') {
+      if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(`${at} wants an object`);
+      validateExpect(v, want, at);
+    } else if (want === 'array' ? !Array.isArray(v) : typeof v !== want) throw new Error(`${at} wants ${want === 'array' ? 'a list' : `a ${want}`}, got ${JSON.stringify(v)}`);
+  }
+  return ex;
+}
+
 /** Merge b into a: nested plain objects merge, everything else is replaced. */
 export function mergeExpect(a, b) {
   for (const [k, v] of Object.entries(b ?? {})) {
@@ -59,7 +85,7 @@ export function mergeExpect(a, b) {
 }
 
 function parseArgs(argv) {
-  const o = { inputs: [], headers: {}, json: null, md: null, sarif: null, expect: {}, ladder: null, budget: null, measure: false, source: null, rules: false, quiet: false, help: false };
+  const o = { inputs: [], headers: {}, json: null, md: null, sarif: null, expect: {}, ladder: null, budget: null, digest: false, measure: false, source: null, rules: false, quiet: false, help: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const val = () => {
@@ -71,8 +97,8 @@ function parseArgs(argv) {
       case '--json': o.json = val(); break;
       case '--md': o.md = val(); break;
       case '--sarif': o.sarif = val(); break;
-      case '--expect': mergeExpect(o.expect, parseExpect(val())); break;
-      case '--expect-file': mergeExpect(o.expect, JSON.parse(fs.readFileSync(val(), 'utf8'))); break;
+      case '--expect': mergeExpect(o.expect, validateExpect(parseExpect(val()))); break;
+      case '--expect-file': mergeExpect(o.expect, validateExpect(JSON.parse(fs.readFileSync(val(), 'utf8')))); break;
       case '--ladder': o.ladder = true; break;
       case '--no-ladder': o.ladder = false; break;
       case '--header': {
@@ -83,11 +109,12 @@ function parseArgs(argv) {
         break;
       }
       case '--budget': {
-        const mb = Number(val());
-        if (!Number.isFinite(mb) || mb < 0) throw new Error('--budget wants a number of megabytes');
-        o.budget = mb * 1048576;
+        const list = val().split(',').map((x) => Number(x.trim()));
+        if (!list.length || list.some((mb) => !Number.isFinite(mb) || mb < 0)) throw new Error('--budget wants megabytes, one value or a comma list');
+        o.budget = list.map((mb) => mb * 1048576);
         break;
       }
+      case '--digest': o.digest = true; break;
       case '--measure': o.measure = true; break;
       case '--source': o.source = val(); break;
       case '--rules': o.rules = true; break;
@@ -198,13 +225,13 @@ const skip = (id, category, title, text) => ({ id, category, level: 'skip', titl
 export async function auditInputs(o, log = () => {}) {
   const results = [];
   let ffmpegMissing = false;
-  for (const input of o.inputs) {
+  for (const [index, input] of o.inputs.entries()) {
     const t0 = Date.now();
     let src = null;
     try {
       src = await openInput(input, o);
       const doc = await openDocument(src);
-      const budget = o.budget ?? (isUrl(input) ? 32 * 1048576 : 0);
+      const budget = o.budget ? o.budget[Math.min(index, o.budget.length - 1)] : isUrl(input) ? 32 * 1048576 : 0;
       const measured = {};
       const skipped = [];
       let res = await auditFile(doc, o.expect, { payloadBudget: budget });
@@ -229,11 +256,13 @@ export async function auditInputs(o, log = () => {}) {
       res.ms = Date.now() - t0;
       res.facts.bytesRead = src.stats?.bytes ?? doc.source?.stats?.bytes ?? null;
       res.facts.requests = src.stats?.requests ?? null;
+      if (o.digest) res.facts.digest = await digests(doc, res.facts);
       results.push(res);
       log(`${input}: ${summaryLine(res.checks)}${res.facts.bytesRead ? `, ${(res.facts.bytesRead / 1048576).toFixed(1)} MB read` : ''} in ${res.ms} ms`);
     } catch (e) {
       const message = String(e?.message ?? e);
-      results.push({ input, file: isUrl(input) ? input.split('/').pop() : path.basename(input), error: message, ms: Date.now() - t0, facts: { name: path.basename(input) }, checks: [], item: null });
+      const reason = e?.code === 'NO_RANGE_SUPPORT' ? 'unavailable:no-range' : e?.code === 'ENOENT' ? 'unavailable:missing' : /HTTP 40[34]|HTTP 410/.test(message) ? 'unavailable:missing' : 'error';
+      results.push({ input, file: isUrl(input) ? input.split('/').pop() : path.basename(input), error: message, reason, ms: Date.now() - t0, facts: { name: path.basename(input) }, checks: [], item: null });
       log(`${input}: could not be audited: ${message}`);
     } finally {
       if (src?.close) await src.close().catch(() => {});
@@ -270,6 +299,21 @@ export function ladderKey(input) {
   return `${dir}|${contentStem(name)}`;
 }
 
+/**
+ * SHA-256 of the index (the moov box) and of each byte range of frame data the audit read,
+ * so that two reads of the same file, from two nodes or an hour apart, can be compared.
+ */
+async function digests(doc, facts) {
+  const { createHash } = await import('node:crypto');
+  const sha = (u8) => createHash('sha256').update(u8).digest('hex');
+  const out = {};
+  if (facts.index) out.index = sha(await doc.source.read(facts.index.offset, facts.index.size));
+  const ranges = facts.payload?.ranges ?? [];
+  if (ranges.length) out.ranges = [];
+  for (const [from, to] of ranges) out.ranges.push({ from, to, sha256: sha(await doc.source.read(from, to - from)) });
+  return out;
+}
+
 function summaryLine(checks) {
   const t = tally(checks);
   return `${t.fail} failed (${t.critical} critical), ${t.warn} warnings, ${t.pass} passed`;
@@ -282,7 +326,7 @@ export function toReport({ results, ladders }, o) {
     generated: new Date().toISOString(),
     expect: mergeExpect(structuredClone(DEFAULT_EXPECT), o.expect),
     summary: { ...tally(all), errors: results.filter((r) => r.error).length },
-    files: results.map((r) => ({ input: r.input, file: r.file, ms: r.ms, ...(r.error ? { error: r.error } : {}), facts: r.facts, checks: r.checks })),
+    files: results.map((r) => ({ input: r.input, file: r.file, ms: r.ms, ...(r.error ? { error: r.error, reason: r.reason } : {}), facts: r.facts, checks: r.checks })),
     ladders: ladders.map((l) => ({ files: l.files, inputs: l.inputs, checks: l.checks })),
     specs: SPECS,
   };

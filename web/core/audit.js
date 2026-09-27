@@ -42,6 +42,8 @@ export const SPECS = {
  *   audio: { required, codec: 'AAC LC', sampleRate, channelsMax, minBitratePerChannel }
  *   loudness: { integrated (LUFS), tolerance (LU), truePeakMax (dBTP) }, for measured loudness
  *   segments: segment lengths (s) the ladder must support
+ *   overlay: { severity: { ruleId: 'critical'|'warning'|'info' }, levelCap: [{ height, fpsMax, level }] }:
+ *     a service's own severities and its level cap per rendition (rule level-policy)
  */
 export const DEFAULT_EXPECT = { peakRatio: 2, fpsMax: 60, segments: [2, 4, 5, 6, 10] };
 
@@ -192,6 +194,23 @@ defineRule({
     const where = LEVEL_SPEC[c.vi.family] ?? LEVEL_SPEC.avc;
     if (c.lvl.lowest.name === name) return pass(`Level ${name} is the lowest that fits`, 'No device is shut out needlessly.', { value: name, ...where });
     return info(`Level ${name} signalled, ${c.lvl.lowest.name} would do`, 'Devices refuse streams above the level they decode; a higher level than needed shuts some out.', { value: name, expected: c.lvl.lowest.name, offset: c.entryOffset, ...where });
+  },
+});
+
+defineRule({
+  id: 'level-policy', category: 'Video', severity: 'critical', spec: 'practice', clause: 'the service\'s level cap per rendition (device reach)',
+  title: 'The level stays within the service\'s cap for the rendition',
+  // overlay.levelCap: [{ height, fpsMax, level }] — the first entry whose height and fpsMax
+  // cover the rendition sets its cap; a rendition no entry covers is not judged.
+  applies: (c) => Array.isArray(c.ex.overlay?.levelCap) && c.lvl?.signalled && c.vi.height && c.it.fps,
+  check: (c) => {
+    const cap = c.ex.overlay.levelCap.find((e) => c.vi.height <= e.height && c.it.fps <= (e.fpsMax ?? Infinity) + 0.01);
+    if (!cap) return null;
+    const name = c.lvl.signalled.name;
+    const over = Number(name) > Number(cap.level);
+    return over
+      ? fail(`Level ${name} at ${c.vi.height}p ${fmtNum(c.it.fps, 0)} fps, capped at ${cap.level}`, 'Above the level the service allows for this rendition: devices gated by level (the player\'s capability check) lose it.', { value: name, expected: `≤ ${cap.level}`, offset: c.entryOffset })
+      : pass(`Level ${name} within the cap of ${cap.level} for ${c.vi.height}p ${fmtNum(c.it.fps, 0)} fps`, 'Within the service\'s device reach.', { value: name, expected: `≤ ${cap.level}` });
   },
 });
 
@@ -855,7 +874,8 @@ async function scanFrames(it, budget, onProgress) {
   for (const [, [from, to]] of [...windows].sort((a, b) => a[0] - b[0])) await ft.ensure(from, to);
   onProgress?.(windows.size, n, 'frame types (sampled GOPs)');
   const partial = windows.size - full;
-  return { sampled: ` (${full} of ${n} GOPs read${partial ? `, ${partial} more in part` : ''})`, gops: windows.size, full, of: n };
+  const ranges = [...windows].sort((a, b) => a[0] - b[0]).map(([, [from, to]]) => [s.offsets[from], s.offsets[to - 1] + s.sizes[to - 1]]);
+  return { sampled: ` (${full} of ${n} GOPs read${partial ? `, ${partial} more in part` : ''})`, gops: windows.size, full, of: n, ranges };
 }
 
 /**
@@ -927,12 +947,13 @@ export async function auditFile(doc, expect = {}, { onProgress, measured = {}, p
     } catch (e) {
       res = { level: 'skip', title: `${r.title}: not checked`, text: String(e?.message ?? e) };
     }
-    if (res) checks.push(finish(r, res));
+    if (res) checks.push(finish(r, res, ex.overlay));
   }
   const facts = {
     name: doc.name, size: doc.size, format: doc.format?.id ?? null, duration: it.duration ?? null,
     bytesRead: doc.source?.stats?.bytes ?? null,
-    payload: scan.gops != null ? { gopsRead: scan.gops, gopsFull: scan.full, gops: scan.of } : null,
+    payload: scan.gops != null ? { gopsRead: scan.gops, gopsFull: scan.full, gops: scan.of, ranges: scan.ranges } : null,
+    index: c.mp4?.moov ? { offset: c.mp4.moov.offset, size: c.mp4.moov.size } : null,
     video: v ? { codec: videoCodecName(it), width: vi.width, height: vi.height, fps: it.fps, profile: vi.profileName ?? null, level: vi.level ?? null, levelName: c.lvl?.signalled?.name ?? null, depth: vi.depth ?? null, bitrate: it.rate?.avg ?? null, peak: it.rate?.peak ?? null, gop: c.gop?.avgSeconds ?? null, bpp: it.bpp ?? null, colour: c.colour?.text ?? null, timescale: v.timescale ?? null } : null,
     audio: c.audio,
     encoder: c.parsed ? { label: c.parsed.label, version: c.parsed.version, crf: c.rc?.crf ?? null, maxrate: c.rc?.maxrate ?? null, bufsize: c.rc?.bufsize ?? null, keyint: c.parsed.get('keyint') ?? null } : null,
@@ -940,10 +961,12 @@ export async function auditFile(doc, expect = {}, { onProgress, measured = {}, p
   return { file: doc.name, facts, checks, item: it };
 }
 
-function finish(rule, res) {
+function finish(rule, res, overlay = null) {
   // A check may name a more specific source than its rule (the level tables of the codec at hand).
   const out = { id: rule.id, category: rule.category, level: res.level, title: res.title, text: res.text, spec: res.spec ?? rule.spec, clause: res.clause ?? rule.clause ?? null };
-  if (res.level === 'warn' || res.level === 'fail') out.severity = rule.severity === 'critical' && res.level === 'fail' ? 'CRITICAL' : rule.severity === 'info' ? 'INFO' : 'WARNING';
+  // A service may promote or demote a rule's severity (expect.overlay.severity[id]).
+  const severity = overlay?.severity?.[rule.id] ?? rule.severity;
+  if (res.level === 'warn' || res.level === 'fail') out.severity = severity === 'critical' && res.level === 'fail' ? 'CRITICAL' : severity === 'info' ? 'INFO' : 'WARNING';
   for (const k of ['value', 'expected', 'offset']) if (res[k] !== undefined) out[k] = res[k];
   if (out.severity) {
     const rem = remedyFor(rule.id);
@@ -976,7 +999,7 @@ export function auditLadder(results, expect = {}) {
     } catch (e) {
       res = { level: 'skip', title: `${r.title}: not checked`, text: String(e?.message ?? e) };
     }
-    if (res) checks.push(finish(r, res));
+    if (res) checks.push(finish(r, res, ex.overlay));
   }
   return { files: results.map((r) => r.file), checks };
 }

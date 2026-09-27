@@ -109,6 +109,44 @@
           "items": {
             "type": "number"
           }
+        },
+        "overlay": {
+          "type": "object",
+          "properties": {
+            "severity": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "enum": [
+                  "critical",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "levelCap": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "height": {
+                    "type": "integer"
+                  },
+                  "fpsMax": {
+                    "type": "number"
+                  },
+                  "level": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "height",
+                  "level"
+                ]
+              }
+            }
+          },
+          "description": "a service’s own severities per rule and its level cap per rendition (rule level-policy)"
         }
       }
     },
@@ -180,6 +218,22 @@
                   },
                   "gops": {
                     "type": "integer"
+                  },
+                  "gopsFull": {
+                    "type": "integer",
+                    "description": "GOPs read in full (the rest were started within the budget)"
+                  },
+                  "ranges": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "description": "byte ranges [from, to) of frame data read"
                   }
                 }
               },
@@ -318,6 +372,48 @@
                   "bufsize": {},
                   "keyint": {}
                 }
+              },
+              "index": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "offset": {
+                    "type": "integer"
+                  },
+                  "size": {
+                    "type": "integer"
+                  }
+                },
+                "description": "where the index (moov) lies"
+              },
+              "digest": {
+                "type": "object",
+                "properties": {
+                  "index": {
+                    "type": "string",
+                    "description": "SHA-256 of the moov bytes"
+                  },
+                  "ranges": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "integer"
+                        },
+                        "to": {
+                          "type": "integer"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "description": "with --digest: hashes of the bytes read, to compare two reads of the same file"
               }
             }
           },
@@ -330,6 +426,10 @@
           "error": {
             "type": "string",
             "description": "why the input could not be audited; checks is then empty"
+          },
+          "reason": {
+            "type": "string",
+            "description": "why an input could not be audited, in a form a service can count: unavailable:missing, unavailable:no-range, error"
           }
         }
       }
