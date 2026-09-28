@@ -31,8 +31,10 @@ contract with `--expect k=v,...` or `--expect-file profile.json` (keys: `gop`, `
 ## Measurements
 
 `--measure` runs FFmpeg for loudness and true peak; with `--source <original>` also PSNR and
-SSIM. Without it those rules, and A/V sync, appear under "Not checked in this run": they
-were not measured, which is not the same as passing.
+SSIM. `--decode` decodes every frame with FFmpeg (single-threaded, reading the whole file) and
+reports damaged frames with their time and byte offset. Without them those rules, and A/V
+sync, appear under "Not checked in this run": they were not measured, which is not the same
+as passing.
 
 ## Reading the report
 
@@ -48,8 +50,9 @@ were not measured, which is not the same as passing.
 
 ## Limits to state when they matter
 
-The audit reads container and codec structure and sampled frame headers. It does not decode
-every frame (a corrupt payload with valid structure passes), does not read DASH manifests, and
+The audit reads container and codec structure and sampled frame headers. Without `--decode`
+it does not decode every frame (a corrupt payload with valid structure passes); it does not
+read DASH manifests, and
 cannot judge picture quality without the source. For HLS it opens only a few segments per
 playlist: codec, resolution and key-frame checks rest on those. Say so rather than implying a
 clean bill of health.

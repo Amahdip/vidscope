@@ -304,13 +304,14 @@ const app = {
     this.updateUrl();
   },
 
-  async runCheck(query, profile = store.get().auditServer?.defaultProfile ?? 'policy') {
+  /** Run a conversion check; `decode` also decodes every frame of every rendition (slower). */
+  async runCheck(query, profile = store.get().auditServer?.defaultProfile ?? 'policy', { decode = false } = {}) {
     const my = ++checkSeq;
-    store.set({ report: { query, profile, status: 'loading', started: Date.now() }, compare: null });
+    store.set({ report: { query, profile, decode, status: 'loading', started: Date.now() }, compare: null });
     document.title = `Checking ${query} — Vidscope`;
     this.updateUrl();
     try {
-      const res = await fetch(`api/audit/check?q=${encodeURIComponent(query)}&profile=${encodeURIComponent(profile)}`);
+      const res = await fetch(`api/audit/check?q=${encodeURIComponent(query)}&profile=${encodeURIComponent(profile)}${decode ? '&decode=1' : ''}`);
       const body = await res.json().catch(() => ({}));
       if (my !== checkSeq) return;
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);

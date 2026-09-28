@@ -687,6 +687,41 @@ defineRule({
   },
 });
 
+// ====================================================================== decoding
+
+/** The byte offset of the video frame shown nearest a moment (seconds from the first frame shown). */
+function offsetAtTime(c, t) {
+  const times = c.it.times;
+  if (!times?.length || !c.v?.samples?.offsets) return undefined;
+  let lo = 0;
+  let hi = times.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] < t) lo = mid + 1;
+    else hi = mid;
+  }
+  if (lo > 0 && Math.abs(times[lo - 1] - t) < Math.abs(times[lo] - t)) lo--;
+  return c.v.samples.offsets[c.it.order?.[lo] ?? lo];
+}
+
+defineRule({
+  id: 'decode-integrity', category: 'Decoding', severity: 'critical', spec: 'practice', clause: 'every frame decodes without an error, checked with FFmpeg\'s decoders',
+  title: 'Every frame decodes cleanly',
+  applies: (c) => c.measured.decode != null,
+  unmeasured: (c) => (c.v || c.a ? 'Not decoded in this run: the other checks read the structure and frame headers, so a damaged payload inside intact structure passes them. vidscope audit --decode decodes every frame with FFmpeg.' : null),
+  check: (c) => {
+    const d = c.measured.decode;
+    if (d.error) return { level: 'skip', title: 'Every frame decodes cleanly: not checked', text: `The decode could not run: ${d.error}` };
+    const tool = `${d.tool ?? 'FFmpeg'}, ${fmtNum((d.ms ?? 0) / 1000, 1)} s`;
+    if (!d.errors) {
+      return pass(`${fmtInt(d.frames ?? 0)} video frames and all audio decode without an error`, `Decoded in full (${tool}): no damaged frame, no decoder warning.${d.container?.length ? ` The container reader noted: ${d.container.join('; ')}.` : ''}`, { value: 0 });
+    }
+    const where = d.at?.length ? ` (first shown at ${fmtDuration(d.firstAt)}${d.at.length > 1 ? `, then ${d.at.slice(1, 4).map((t) => fmtDuration(t)).join(', ')}${d.at.length > 4 ? '…' : ''}` : ''})` : '';
+    const what = d.corruptFrames ? plural(d.corruptFrames, 'damaged frame') : plural(d.errors, 'decoder error');
+    return fail(`${what}${where}`, `FFmpeg's decoders reported damage (${tool}): ${d.messages.slice(0, 3).join('; ')}. Viewers see blocks or smears where a frame is damaged, until the next key frame, or hear a click for audio; a file whose structure is intact can still carry a damaged payload.`, { value: d.corruptFrames || d.errors, offset: d.firstAt != null ? offsetAtTime(c, d.firstAt) : undefined });
+  },
+});
+
 // ====================================================================== ladder
 
 /** Size tiers renditions are named after (the short side of a 16:9 frame). */

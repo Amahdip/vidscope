@@ -71,7 +71,7 @@ export class ReportView {
     }
     if (rep.status === 'loading') {
       const t0 = rep.started ?? Date.now();
-      const line = h('span', null, 'Looking it up and auditing its renditions…');
+      const line = h('span', null, rep.decode ? 'Auditing and decoding every frame of every rendition: each is downloaded in full, so a long video takes a few minutes…' : 'Looking it up and auditing its renditions…');
       const clock = h('span', { class: 'dim' });
       const tickClock = () => { clock.textContent = ` ${fmtNum((Date.now() - t0) / 1000, 0)} s`; };
       tickClock();
@@ -130,6 +130,7 @@ export class ReportView {
 
     body.append(h('div', { class: 'rpactions' },
       h('button', { class: 'btn', disabled: d.renditions.filter((r) => r.size).length < 2 ? '' : null, onclick: () => this.app.compareRemote(d), 'data-tip': 'Open every rendition side by side: the ladder, key frames, the frame each shows at a moment, pixels. The viewer reads the files through the audit server; for long videos that is more than the audit read.' }, 'Compare the renditions'),
+      s.auditServer?.decode && !d.decoded ? h('button', { class: 'btn', onclick: () => this.app.runCheck(d.query, d.profile, { decode: true }), 'data-tip': 'Decode every video and audio frame of every rendition with FFmpeg, to find damage the structure does not show. Each rendition is downloaded in full; a long video takes a few minutes.' }, 'Decode every frame') : null,
       h('button', { class: 'btn copy', onclick: () => copyText(d.markdown), 'data-tip': 'Copy the report as Markdown' }, 'copy report'),
       h('button', { class: 'btn', onclick: () => download(`check-${d.label}.audit.json`, JSON.stringify(report, null, 2)), 'data-tip': 'Save the JSON report' }, 'JSON'),
       h('button', { class: 'btn', onclick: () => download(`check-${d.label}.sarif`, JSON.stringify(toSarif(report), null, 2)), 'data-tip': 'Save a SARIF 2.1.0 log' }, 'SARIF'),
@@ -163,7 +164,7 @@ export class ReportView {
     }
     body.append(per);
     if (s.mode !== 'raw') {
-      body.append(h('p', { class: 'prose rpnote' }, `The audit server read ${plural(results.length, 'rendition')}: each index in full and ${results.some((r) => r.facts?.payload) ? 'whole GOPs spread over each file' : 'all of their frames'}. Loudness, sync and fidelity to the source need a decode; they run in the scheduled audits with --measure.`));
+      body.append(h('p', { class: 'prose rpnote' }, `The audit server read ${plural(results.length, 'rendition')}: each index in full and ${results.some((r) => r.facts?.payload) ? 'whole GOPs spread over each file' : 'all of their frames'}${d.decoded ? ', and decoded every frame of each with FFmpeg' : ''}. ${d.decoded ? '' : 'A damaged payload inside intact structure only shows when every frame is decoded (Decode every frame). '}Loudness, sync and fidelity to the source need a measurement; they run in the scheduled audits with --measure.`));
     }
     return body;
   }
