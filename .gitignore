@@ -2,3 +2,7 @@ node_modules/
 samples/*
 !samples/.gitkeep
 .DS_Store
+
+# Local agent state
+.claude/worktrees/
+.claude/settings.local.json
