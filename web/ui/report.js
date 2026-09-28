@@ -8,7 +8,9 @@ import { fmtInt, fmtNum, fmtBitrate, fmtDuration, humanSize, plural } from '../c
 import { toSarif } from '../core/audit.js';
 import { scoreboard, matrix, checkList, counts, download, factsLine, tone } from './auditreport.js';
 
-const EXAMPLES = ['a video id, such as 12345678', 'a rendition URL, such as http://node.asset…/aparat-video/abc-720p.mp4', 'a flv_name, such as abc123def'];
+// What the audit server says it accepts (api/audit/info placeholder and examples), else this.
+const PLACEHOLDER = 'video id or rendition URL';
+const EXAMPLES = ['a video id', 'the URL of one rendition'];
 
 export class ReportView {
   constructor(el, app) {
@@ -38,9 +40,10 @@ export class ReportView {
   head(rep) {
     const s = this.app.store.get();
     const server = s.auditServer;
+    const placeholder = server?.placeholder ?? PLACEHOLDER;
     this.input = h('input', {
       class: 'rpq', type: 'search', value: rep.query ?? '', spellcheck: 'false', autocomplete: 'off',
-      placeholder: 'video id, rendition URL or flv_name', 'aria-label': 'Video id, rendition URL or flv_name',
+      placeholder, 'aria-label': placeholder,
     });
     const profiles = [...(server?.profiles ?? []).map((p) => [p.id, p.name, p.description]), ['standards', 'Standards only', 'What the standards say, with no service contract']];
     const select = h('select', { class: 'aprofile', 'aria-label': 'Profile', 'data-tip': 'What the conversion is judged against' },
@@ -62,7 +65,7 @@ export class ReportView {
     if (!rep.query) {
       body.append(h('div', { class: 'rpintro' },
         h('p', { class: 'prose lead' }, 'Give a converted video and get its whole ladder audited against the streaming standards and the conversion service\'s own contract: every rendition, the checks across renditions, what to fix and how.'),
-        h('ul', { class: 'prose' }, EXAMPLES.map((x) => h('li', null, x))),
+        h('ul', { class: 'prose' }, (s.auditServer?.examples ?? EXAMPLES).map((x) => h('li', null, x))),
         h('p', { class: 'prose' }, 'The audit server looks the video up in the registry, finds each rendition on the storage and reads only what the rules need: the index in full and a budget of frame data, a few megabytes per rendition. Any rendition then opens in the viewer, with every byte, frame and chart.')));
       return body;
     }
@@ -91,6 +94,7 @@ export class ReportView {
     const v = d.video ?? {};
     const title = v.id ? `Video ${v.id}${v.title ? ` · ${v.title}` : ''}` : d.label;
     const meta = [
+      v.uid ? ['uid', v.uid] : null,
       v.flv ? ['flv_name', v.flv] : null,
       v.uploadDate ? ['uploaded', v.uploadDate] : null,
       v.duration ? ['duration', fmtDuration(v.duration)] : null,
