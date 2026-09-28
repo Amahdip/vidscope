@@ -144,10 +144,10 @@ defineRule({
 // ====================================================================== video
 
 defineRule({
-  id: 'codec', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.1 H.264, HEVC, Dolby Vision or AV1',
+  id: 'codec', category: 'Video', severity: 'critical', spec: 'hlsAuth', clause: '1.1 H.264, HEVC, Dolby Vision or AV1',
   title: 'An HLS video codec',
   applies: (c) => !!c.v,
-  check: (c) => (['avc', 'hevc', 'av1'].includes(c.vi.family) ? pass(videoCodecName(c.it), c.vi.family === 'av1' ? 'An HLS codec for Apple devices, in fMP4, on devices that decode AV1.' : 'An HLS codec every Apple device decodes.') : warn(`${videoCodecName(c.it)}: not an HLS codec for Apple devices`, 'Apple devices play H.264, HEVC (and Dolby Vision) and AV1; other codecs need separate renditions.')),
+  check: (c) => (['avc', 'hevc', 'av1'].includes(c.vi.family) ? pass(videoCodecName(c.it), c.vi.family === 'av1' ? 'An HLS codec for Apple devices, in fMP4, on devices that decode AV1.' : 'An HLS codec every Apple device decodes.') : fail(`${videoCodecName(c.it)}: not an HLS codec for Apple devices`, 'Apple devices play H.264, HEVC (and Dolby Vision) and AV1; other codecs need separate renditions.')),
 });
 
 defineRule({
@@ -454,10 +454,10 @@ defineRule({
 });
 
 defineRule({
-  id: 'depth', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.3b at most High Profile, which is 8-bit (High 10 is beyond it)',
+  id: 'depth', category: 'Video', severity: 'critical', spec: 'hlsAuth', clause: '1.3b at most High Profile, which is 8-bit (High 10 is beyond it)',
   title: '8-bit samples for H.264',
   applies: (c) => c.vi.family === 'avc' && c.vi.depth,
-  check: (c) => (c.vi.depth > 8 ? warn(`${c.vi.depth}-bit H.264`, 'H.264 above 8 bits (High 10) is not decoded by most hardware.', { offset: c.entryOffset }) : pass('8-bit 4:2:0', 'Decoded by every device.')),
+  check: (c) => (c.vi.depth > 8 ? fail(`${c.vi.depth}-bit H.264`, 'H.264 above 8 bits (High 10) is beyond High Profile, the most Apple devices decode, and most hardware does not decode it.', { offset: c.entryOffset }) : pass('8-bit 4:2:0', 'Decoded by every device.')),
 });
 
 defineRule({
