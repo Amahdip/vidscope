@@ -169,13 +169,35 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
 @media (prefers-reduced-motion: no-preference) {
   .rv-btn { transition: background-color 120ms ease, border-color 120ms ease; }
 }
+.mast-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.lang-switch { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; background: var(--sheet); }
+.lang-btn { font: 500 12px/1 var(--mono); padding: 5px 11px; border: 0; background: transparent; color: var(--muted); cursor: pointer; transition: background 120ms ease, color 120ms ease; }
+.lang-btn:hover { color: var(--ink); }
+.lang-btn[aria-pressed="true"] { background: var(--accent); color: #fff; font-weight: 600; }
+
+body.lang-fa { font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif; }
+body.lang-fa .lede, body.lang-fa .rbody .says dd, body.lang-fa .shead p, body.lang-fa .key dd, body.lang-fa td.note, body.lang-fa .ghead .gmeta, body.lang-fa .gap li .gw, body.lang-fa .rv-meta, body.lang-fa footer {
+  direction: rtl;
+  text-align: right;
+  line-height: 1.65;
+}
+body.lang-fa .cite, body.lang-fa .rid, body.lang-fa .clause, body.lang-fa .tag, body.lang-fa .num, body.lang-fa .applink, body.lang-fa select, body.lang-fa input, body.lang-fa .rv-btn {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
 </style>
 
 <div class="wrap">
   <header class="mast">
-    <p class="eyebrow"><a class="applink" href="./">← Vidscope</a><span class="applink"> · </span>Conversion audit · the standards behind it</p>
-    <h1>Audit Standards Register</h1>
-    <p class="lede">Every check the conversion audit runs, the published standard it comes from, and the exact item it cites. Each requirement is summarised in our own words: open the source to confirm it<span class="hosted-only">, then mark the rule confirmed or raise a question. Reviews are saved here for everyone with access</span>.</p>
+    <div class="mast-top">
+      <p class="eyebrow"><a class="applink" href="./">← Vidscope</a><span class="applink"> · </span><span id="txt-eyebrow">Conversion audit · the standards behind it</span></p>
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button type="button" class="lang-btn" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" class="lang-btn" data-lang="fa" aria-pressed="false">فارسی</button>
+      </div>
+    </div>
+    <h1 id="txt-title">Audit Standards Register</h1>
+    <p class="lede" id="txt-lede">Every check the conversion audit runs, the published standard it comes from, and the exact item it cites. Each requirement is summarised in our own words: open the source to confirm it<span class="hosted-only">, then mark the rule confirmed or raise a question. Reviews are saved here for everyone with access</span>.</p>
     <dl class="facts" id="facts"></dl>
     <div class="progress" aria-live="polite">
       <div class="bar" id="bar" role="img" aria-label="Review progress"></div>
@@ -187,51 +209,51 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
     <div class="shead"><h2 id="how-h">How to read it</h2></div>
     <div class="how">
       <div>
-        <h3>Severity follows the source</h3>
+        <h3 id="txt-how-sev">Severity follows the source</h3>
         <dl class="key">
-          <dt><span class="tag n-must">MUST</span></dt><dd>A requirement (also SHALL, SHALL NOT). Breaking it is <b>critical</b>.</dd>
-          <dt><span class="tag n-should">SHOULD · Recommends</span></dt><dd>A recommendation. Breaking it is a <b>warning</b>, unless the rule explains otherwise.</dd>
-          <dt><span class="tag n-may">MAY · Defines · Adapted</span></dt><dd>An option, a definition with no requirement, or a requirement the audit adapts to a single file. Reported as <b>information</b>, or with a severity that is our own judgement and says so.</dd>
-          <dt><span class="tag n-prac">Practice · Service</span></dt><dd>Not a standard: industry practice, or the service's own profile.</dd>
+          <dt><span class="tag n-must">MUST</span></dt><dd id="txt-must">A requirement (also SHALL, SHALL NOT). Breaking it is <b>critical</b>.</dd>
+          <dt><span class="tag n-should">SHOULD · Recommends</span></dt><dd id="txt-should">A recommendation. Breaking it is a <b>warning</b>, unless the rule explains otherwise.</dd>
+          <dt><span class="tag n-may">MAY · Defines · Adapted</span></dt><dd id="txt-may">An option, a definition with no requirement, or a requirement the audit adapts to a single file. Reported as <b>information</b>, or with a severity that is our own judgement and says so.</dd>
+          <dt><span class="tag n-prac">Practice · Service</span></dt><dd id="txt-prac">Not a standard: industry practice, or the service's own profile.</dd>
         </dl>
       </div>
       <div>
-        <h3>How each citation was verified</h3>
+        <h3 id="txt-how-ver">How each citation was verified</h3>
         <dl class="key">
-          <dt><span class="tag v-text">Checked</span></dt><dd>Read against the published text on 28 September 2026.</dd>
-          <dt><span class="tag v-unread">Not re-read</span></dt><dd>The source could not be downloaded here (ITU, ISO). The clause comes from the standard's known structure: please open it and confirm.</dd>
-          <dt><span class="tag v-practice">Practice</span></dt><dd>No standard to check against.</dd>
+          <dt><span class="tag v-text">Checked</span></dt><dd id="txt-ver-checked">Read against the published text on 28 September 2026.</dd>
+          <dt><span class="tag v-unread">Not re-read</span></dt><dd id="txt-ver-unread">The source could not be downloaded here (ITU, ISO). The clause comes from the standard's known structure: please open it and confirm.</dd>
+          <dt><span class="tag v-practice">Practice</span></dt><dd id="txt-ver-practice">No standard to check against.</dd>
         </dl>
       </div>
       <div class="hosted-only">
-        <h3>Reviewing</h3>
-        <p class="lede" style="font-size:14px">Open the source from the table below, find the item, and press <b>Confirm</b>, <b>Question</b> or <b>Disagree</b> on the rule. Add a note for anything to change. Each rule keeps the latest review, with who made it and when.</p>
+        <h3 id="txt-how-rev">Reviewing</h3>
+        <p class="lede" id="txt-how-rev-p" style="font-size:14px">Open the source from the table below, find the item, and press <b>Confirm</b>, <b>Question</b> or <b>Disagree</b> on the rule. Add a note for anything to change. Each rule keeps the latest review, with who made it and when.</p>
       </div>
     </div>
   </section>
 
   <section aria-labelledby="src-h">
-    <div class="shead"><h2 id="src-h">Sources</h2><p>Where each rule comes from. The links open the official documents.</p></div>
+    <div class="shead"><h2 id="src-h">Sources</h2><p id="txt-src-p">Where each rule comes from. The links open the official documents.</p></div>
     <div class="tablewrap"><table>
-      <thead><tr><th scope="col">Source</th><th scope="col">Edition</th><th scope="col">Access</th><th scope="col">Rules</th><th scope="col">Verified</th><th scope="col">What was checked</th></tr></thead>
+      <thead><tr><th scope="col" id="th-src">Source</th><th scope="col" id="th-ed">Edition</th><th scope="col" id="th-acc">Access</th><th scope="col" id="th-rules">Rules</th><th scope="col" id="th-ver">Verified</th><th scope="col" id="th-chk">What was checked</th></tr></thead>
       <tbody id="sources"></tbody>
     </table></div>
   </section>
 
   <section aria-labelledby="rules-h">
-    <div class="shead"><h2 id="rules-h">The rules</h2><p>Grouped by source. The large number is the item or clause cited; the small id is the name the rule has in audit reports.</p></div>
+    <div class="shead"><h2 id="rules-h">The rules</h2><p id="txt-rules-p">Grouped by source. The large number is the item or clause cited; the small id is the name the rule has in audit reports.</p></div>
     <form class="filters" id="filters" onsubmit="return false">
-      <label for="f-src">Source<select id="f-src"><option value="">All sources</option></select></label>
-      <label for="f-ver">Verified<select id="f-ver"><option value="">Any</option><option value="text">Checked against the text</option><option value="unread">Not re-read</option><option value="practice">Practice</option></select></label>
-      <label for="f-rev">Review<select id="f-rev"><option value="">Any</option><option value="none">Not reviewed</option><option value="confirmed">Confirmed</option><option value="question">Question</option><option value="disagree">Disagree</option></select></label>
-      <label for="f-q">Search<input id="f-q" type="search" placeholder="gop, audio, 7.4…" autocomplete="off"></label>
+      <label for="f-src"><span id="lbl-f-src">Source</span><select id="f-src"><option value="" id="opt-all-src">All sources</option></select></label>
+      <label for="f-ver"><span id="lbl-f-ver">Verified</span><select id="f-ver"><option value="" id="opt-all-ver">Any</option><option value="text" id="opt-ver-text">Checked against the text</option><option value="unread" id="opt-ver-unread">Not re-read</option><option value="practice" id="opt-ver-prac">Practice</option></select></label>
+      <label for="f-rev"><span id="lbl-f-rev">Review</span><select id="f-rev"><option value="" id="opt-all-rev">Any</option><option value="none" id="opt-rev-none">Not reviewed</option><option value="confirmed" id="opt-rev-conf">Confirmed</option><option value="question" id="opt-rev-q">Question</option><option value="disagree" id="opt-rev-no">Disagree</option></select></label>
+      <label for="f-q"><span id="lbl-f-q">Search</span><input id="f-q" type="search" placeholder="gop, audio, 7.4…" autocomplete="off"></label>
       <span class="count" id="f-count"></span>
     </form>
     <div id="groups"></div>
   </section>
 
   <section aria-labelledby="gaps-h">
-    <div class="shead"><h2 id="gaps-h">Not audited yet</h2><p>Requirements the audit does not check today. Most concern playlists, captions and trick play, which are made elsewhere in the delivery chain rather than in the rendition files the audit reads. Some are readable from the files and are candidates for new rules.</p></div>
+    <div class="shead"><h2 id="gaps-h">Not audited yet</h2><p id="txt-gaps-p">Requirements the audit does not check today. Most concern playlists, captions and trick play, which are made elsewhere in the delivery chain rather than in the rendition files the audit reads. Some are readable from the files and are candidates for new rules.</p></div>
     <div class="gaps" id="gaps"></div>
   </section>
 
@@ -261,27 +283,52 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
   const VER = { text: 'Checked against the text', unread: 'Not re-read', practice: 'Practice' };
   const LABEL = { confirmed: 'Confirmed', question: 'Question', disagree: 'Disagree' };
 
-  // ---- masthead facts
-  const nText = D.rules.filter((r) => SRC[r.spec].checked === 'text').length;
-  const nUnread = D.rules.filter((r) => SRC[r.spec].checked === 'unread').length;
-  const nPrac = D.rules.filter((r) => SRC[r.spec].checked === 'practice').length;
-  const standards = D.sources.filter((s) => s.key !== 'practice').length;
-  for (const [k, v] of [['Rules', D.rules.length], ['Standards', standards], ['Checked against the text', nText], ['Not re-read', nUnread], ['Practice, not a standard', nPrac]]) $('facts').append(el('div', null, el('dt', { text: k }), el('dd', { class: 'num', text: String(v) })));
+  let currentLang = 'en';
+  try {
+    const q = new URLSearchParams(window.location.search).get('lang');
+    if (q === 'fa' || q === 'en') currentLang = q;
+    else {
+      const saved = localStorage.getItem('vidscope-lang');
+      if (saved === 'fa' || saved === 'en') currentLang = saved;
+    }
+  } catch {}
+
+  function renderFacts(isFa) {
+    const nText = D.rules.filter((r) => SRC[r.spec].checked === 'text').length;
+    const nUnread = D.rules.filter((r) => SRC[r.spec].checked === 'unread').length;
+    const nPrac = D.rules.filter((r) => SRC[r.spec].checked === 'practice').length;
+    const standards = D.sources.filter((s) => s.key !== 'practice').length;
+    const items = isFa ? [
+      ['قوانین', D.rules.length],
+      ['استانداردها', standards],
+      ['تطبیق با متن استاندارد', nText],
+      ['بازخوانی‌نشده', nUnread],
+      ['عرف صنعت استریم', nPrac]
+    ] : [
+      ['Rules', D.rules.length],
+      ['Standards', standards],
+      ['Checked against the text', nText],
+      ['Not re-read', nUnread],
+      ['Practice, not a standard', nPrac]
+    ];
+    $('facts').replaceChildren(...items.map(([k, v]) => el('div', null, el('dt', { text: k }), el('dd', { class: 'num', text: String(v) }))));
+  }
 
   // ---- sources
   for (const s of D.sources) {
+    s._noteTd = el('td', { class: 'note', text: s.note });
     $('sources').append(el('tr', null,
       el('td', null, el('a', { href: s.url, target: '_blank', rel: 'noopener', class: 'src', text: s.short }), el('div', { class: 'clause', text: s.name })),
       el('td', { text: s.edition }),
       el('td', { text: s.access }),
       el('td', { class: 'num', text: String(s.count) }),
       el('td', null, el('span', { class: `tag v-${s.checked}`, text: s.checked === 'text' ? 'Checked' : VER[s.checked] })),
-      el('td', { class: 'note', text: s.note })));
+      s._noteTd));
     $('f-src').append(el('option', { value: s.key, text: s.short }));
   }
 
   // ---- rules
-  const rows = new Map(); // id -> { art, rule, ui }
+  const rows = new Map(); // id -> { art, rule, ui, group }
   for (const s of D.sources) {
     const list = D.rules.filter((r) => r.spec === s.key);
     const meta = el('span', { class: 'gmeta' });
@@ -294,6 +341,10 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
       ui.meta = el('span', { class: 'rv-meta', text: 'Not reviewed' });
       ui.note = el('textarea', { id: `note-${r.id}`, rows: '1', placeholder: 'Note (optional): what to check or change', 'aria-label': `Note on ${r.title}` });
       ui.box = el('div', { class: 'review' }, el('div', { class: 'rv-row' }, ui.btns, ui.meta), ui.note);
+      ui.reqDd = el('dd', { text: r.req });
+      ui.checkDd = el('dd', { text: r.check });
+      ui.srcDt = el('dt', { text: r.spec === 'practice' ? 'The practice' : 'The source says' });
+      ui.chkDt = el('dt', { text: 'The audit checks' });
       const art = el('article', { class: 'rule', id: `r-${r.id}` },
         el('div', { class: r.cite.length > 8 ? 'cite long' : 'cite' }, r.cite, el('small', { text: r.scope === 'ladder' ? 'ladder' : r.category.toLowerCase() })),
         el('div', { class: 'rbody' },
@@ -304,8 +355,8 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
             el('span', { class: `tag s-${r.severity}`, text: SEV[r.severity] }),
             el('span', { class: `tag v-${SRC[r.spec].checked}`, text: VER[SRC[r.spec].checked] })),
           el('dl', { class: 'says' },
-            el('div', null, el('dt', { text: r.spec === 'practice' ? 'The practice' : 'The source says' }), el('dd', { text: r.req })),
-            el('div', null, el('dt', { text: 'The audit checks' }), el('dd', { text: r.check }))),
+            el('div', null, ui.srcDt, ui.reqDd),
+            el('div', null, ui.chkDt, ui.checkDd)),
           ui.box));
       rows.set(r.id, { art, rule: r, ui, group });
       group.append(art);
@@ -318,7 +369,6 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
     $('gaps').append(el('div', { class: 'gap' }, el('h3', { text: g.area }), el('ul', null, g.items.map(([item, norm, what, why]) =>
       el('li', null, el('span', { class: 'gi', text: item }), el('span', null, norm !== '—' ? el('span', { class: `tag ${normClass(norm)}`, text: norm }) : null, el('div', { text: what })), el('span', { class: 'gw', text: why }))))));
   }
-  $('foot').textContent = `Built from the audit engine of Vidscope ${D.version}; citations checked against the texts on ${D.checked}. The rule list comes from the engine itself, so this register lists exactly what the audit runs. Requirements are summarised, not quoted; the sources are authoritative.`;
 
   // ---- review state
   let reviews = {};
@@ -336,6 +386,7 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
     if (document.activeElement !== ui.note) ui.note.value = (rv && rv.note) || '';
   }
   function paintProgress() {
+    const isFa = currentLang === 'fa';
     const n = D.rules.length;
     const c = { confirmed: 0, question: 0, disagree: 0 };
     for (const r of D.rules) { const s = reviews[r.id]?.status; if (s in c) c[s]++; }
@@ -345,19 +396,22 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
       el('span', { class: 'b-q', style: `width:${(c.question / n) * 100}%` }),
       el('span', { class: 'b-no', style: `width:${(c.disagree / n) * 100}%` }));
     const open = n - c.confirmed - c.question - c.disagree;
-    $('progress-text').textContent = `${c.confirmed} confirmed · ${c.question} with a question · ${c.disagree} disagreed · ${open} not reviewed yet, of ${n} rules`;
+    $('progress-text').textContent = isFa
+      ? `${c.confirmed} تأییدشده · ${c.question} دارای ابهام · ${c.disagree} مخالف · ${open} بازبینی‌نشده، از کل ${n} قانون`
+      : `${c.confirmed} confirmed · ${c.question} with a question · ${c.disagree} disagreed · ${open} not reviewed yet, of ${n} rules`;
     bar.setAttribute('aria-label', $('progress-text').textContent);
   }
   function paintAll() { for (const id of rows.keys()) paintRow(id); paintProgress(); applyFilters(); }
 
   // ---- filters
   function applyFilters() {
+    const isFa = currentLang === 'fa';
     const src = $('f-src').value, ver = $('f-ver').value, rev = $('f-rev').value, q = $('f-q').value.trim().toLowerCase();
     let shown = 0;
     const perGroup = new Map();
     for (const { art, rule, group } of rows.values()) {
       const st = reviews[rule.id]?.status || 'none';
-      const hay = `${rule.id} ${rule.title} ${rule.clause} ${rule.req} ${rule.check} ${rule.cite}`.toLowerCase();
+      const hay = `${rule.id} ${rule.title} ${rule.clause} ${rule.req} ${rule.reqFa || ''} ${rule.check} ${rule.checkFa || ''} ${rule.cite}`.toLowerCase();
       const ok = (!src || rule.spec === src) && (!ver || SRC[rule.spec].checked === ver) && (!rev || st === rev) && (!q || hay.includes(q));
       art.hidden = !ok;
       if (ok) shown++;
@@ -367,12 +421,106 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
     }
     for (const [group, g] of perGroup) {
       group.hidden = g.shown === 0;
-      group._meta.textContent = `${g.total} ${g.total === 1 ? 'rule' : 'rules'} · ${g.reviewed} reviewed`;
+      group._meta.textContent = isFa
+        ? `${g.total} قانون · ${g.reviewed} بازبینی‌شده`
+        : `${g.total} ${g.total === 1 ? 'rule' : 'rules'} · ${g.reviewed} reviewed`;
     }
-    $('f-count').textContent = `${shown} of ${D.rules.length} rules shown`;
+    $('f-count').textContent = isFa
+      ? `${shown} از ${D.rules.length} قانون نمایش داده شده`
+      : `${shown} of ${D.rules.length} rules shown`;
   }
   for (const id of ['f-src', 'f-ver', 'f-rev']) $(id).addEventListener('change', applyFilters);
   $('f-q').addEventListener('input', applyFilters);
+
+  function setLang(lang) {
+    currentLang = lang;
+    try { localStorage.setItem('vidscope-lang', lang); } catch {}
+    const isFa = lang === 'fa';
+    document.documentElement.lang = lang;
+    document.body.classList.toggle('lang-fa', isFa);
+    for (const b of document.querySelectorAll('.lang-btn')) {
+      b.setAttribute('aria-pressed', String(b.dataset.lang === lang));
+    }
+
+    $('txt-eyebrow').textContent = isFa ? 'آدیت تبدیل ویدیو · استانداردهای مرجع' : 'Conversion audit · the standards behind it';
+    $('txt-title').textContent = isFa ? 'رجیستری استانداردهای آدیت' : 'Audit Standards Register';
+    $('txt-lede').innerHTML = isFa
+      ? 'تمامی چک‌هایی که آدیت تبدیل ویدیو انجام می‌دهد، استاندارد منتشرشده مربوطه و بند دقیق استنادشده. الزامات به زبان ساده بازنویسی شده‌اند: منبع را باز کنید تا بررسی کنید' + (hosted ? '، سپس قانون را تأیید کنید یا سوال مطرح نمایید. نظرات و بازبینی‌ها برای همه افراد دارای دسترسی ذخیره می‌شود.' : '.')
+      : 'Every check the conversion audit runs, the published standard it comes from, and the exact item it cites. Each requirement is summarised in our own words: open the source to confirm it' + (hosted ? ', then mark the rule confirmed or raise a question. Reviews are saved here for everyone with access.' : '.');
+
+    $('how-h').textContent = isFa ? 'راهنمای مطالعه' : 'How to read it';
+    $('txt-how-sev').textContent = isFa ? 'میزان اهمیت بر اساس مرجع' : 'Severity follows the source';
+    $('txt-must').innerHTML = isFa ? 'یک الزام قطعی (همچنین SHALL و SHALL NOT). نقض آن <b>بحرانی (critical)</b> است.' : 'A requirement (also SHALL, SHALL NOT). Breaking it is <b>critical</b>.';
+    $('txt-should').innerHTML = isFa ? 'یک توصیه. نقض آن <b>هشدار (warning)</b> است، مگر اینکه قانون وضعیت دیگری را تصریح کند.' : 'A recommendation. Breaking it is a <b>warning</b>, unless the rule explains otherwise.';
+    $('txt-may').innerHTML = isFa ? 'یک اختیار، تعریف بدون الزام، یا الزامی که آدیت به یک فایل تعمیم داده است. به صورت <b>اطلاع‌رسانی (information)</b> گزارش می‌شود.' : 'An option, a definition with no requirement, or a requirement the audit adapts to a single file. Reported as <b>information</b>, or with a severity that is our own judgement and says so.';
+    $('txt-prac').innerHTML = isFa ? 'عرف صنعت استریم یا پروفایل اختصاصی سرویس (فاقد سند استاندارد رسمی).' : 'Not a standard: industry practice, or the service\'s own profile.';
+
+    $('txt-how-ver').textContent = isFa ? 'نحوه بررسی استنادها' : 'How each citation was verified';
+    $('txt-ver-checked').textContent = isFa ? 'تطبیق داده شده با متن منتشرشده در تاریخ ۲۸ سپتامبر ۲۰۲۶.' : 'Read against the published text on 28 September 2026.';
+    $('txt-ver-unread').textContent = isFa ? 'منبع امکان دانلود مستقیم نداشت (ITU، ISO). بندها بر اساس ساختار رسمی استاندارد است؛ لطفاً با PDF منبع مقایسه فرمایید.' : 'The source could not be downloaded here (ITU, ISO). The clause comes from the standard\'s known structure: please open it and confirm.';
+    $('txt-ver-practice').textContent = isFa ? 'عرف جاری صنعت و پکیجرها بدون استاندارد مکتوب رسمی.' : 'No standard to check against.';
+
+    if ($('txt-how-rev')) $('txt-how-rev').textContent = isFa ? 'بازبینی و ارزیابی' : 'Reviewing';
+    if ($('txt-how-rev-p')) $('txt-how-rev-p').innerHTML = isFa ? 'منبع را از جدول باز کنید، بند مربوطه را بیابید و دکمه‌های <b>تأیید (Confirm)</b>، <b>سوال (Question)</b> یا <b>مخالف (Disagree)</b> را انتخاب کنید. آخرین بازبینی برای هر قانون ثبت می‌شود.' : 'Open the source from the table below, find the item, and press <b>Confirm</b>, <b>Question</b> or <b>Disagree</b> on the rule. Add a note for anything to change. Each rule keeps the latest review, with who made it and when.';
+
+    $('src-h').textContent = isFa ? 'مراجع استانداردها' : 'Sources';
+    $('txt-src-p').textContent = isFa ? 'استانداردهایی که قوانین از آن‌ها اقتباس شده‌اند. لینک‌ها اسناد رسمی را باز می‌کنند.' : 'Where each rule comes from. The links open the official documents.';
+
+    $('th-src').textContent = isFa ? 'مرجع' : 'Source';
+    $('th-ed').textContent = isFa ? 'ویرایش' : 'Edition';
+    $('th-acc').textContent = isFa ? 'دسترسی' : 'Access';
+    $('th-rules').textContent = isFa ? 'تعداد قوانین' : 'Rules';
+    $('th-ver').textContent = isFa ? 'وضعیت بررسی' : 'Verified';
+    $('th-chk').textContent = isFa ? 'موارد بررسی‌شده' : 'What was checked';
+
+    $('rules-h').textContent = isFa ? 'قوانین' : 'The rules';
+    $('txt-rules-p').textContent = isFa ? 'دسته‌بندی‌شده بر اساس منبع. عدد بزرگ بند یا ماده استاندارد است؛ شناسه کوچک نام قانون در گزارش‌های آدیت است.' : 'Grouped by source. The large number is the item or clause cited; the small id is the name the rule has in audit reports.';
+
+    $('lbl-f-src').textContent = isFa ? 'مرجع' : 'Source';
+    $('opt-all-src').textContent = isFa ? 'همه مراجع' : 'All sources';
+    $('lbl-f-ver').textContent = isFa ? 'وضعیت بررسی' : 'Verified';
+    $('opt-all-ver').textContent = isFa ? 'همه' : 'Any';
+    $('opt-ver-text').textContent = isFa ? 'تطبیق با متن استاندارد' : 'Checked against the text';
+    $('opt-ver-unread').textContent = isFa ? 'بازخوانی‌نشده' : 'Not re-read';
+    $('opt-ver-prac').textContent = isFa ? 'عرف صنعت' : 'Practice';
+
+    $('lbl-f-rev').textContent = isFa ? 'بازبینی' : 'Review';
+    $('opt-all-rev').textContent = isFa ? 'همه' : 'Any';
+    $('opt-rev-none').textContent = isFa ? 'بازبینی‌نشده' : 'Not reviewed';
+    $('opt-rev-conf').textContent = isFa ? 'تأییدشده' : 'Confirmed';
+    $('opt-rev-q').textContent = isFa ? 'دارای ابهام' : 'Question';
+    $('opt-rev-no').textContent = isFa ? 'مخالف' : 'Disagree';
+
+    $('lbl-f-q').textContent = isFa ? 'جستجو' : 'Search';
+    $('f-q').placeholder = isFa ? 'جستجوی gop، صدا، 7.4...' : 'gop, audio, 7.4…';
+
+    $('gaps-h').textContent = isFa ? 'مواردی که هنوز بررسی نمی‌شوند' : 'Not audited yet';
+    $('txt-gaps-p').textContent = isFa ? 'الزاماتی که در حال حاضر آدیت بررسی نمی‌کند (مانند زیرنویس‌ها، مانیفست DASH و...).' : 'Requirements the audit does not check today. Most concern playlists, captions and trick play, which are made elsewhere in the delivery chain rather than in the rendition files the audit reads. Some are readable from the files and are candidates for new rules.';
+
+    renderFacts(isFa);
+
+    for (const s of D.sources) {
+      if (s._noteTd) s._noteTd.textContent = (isFa && s.noteFa) ? s.noteFa : s.note;
+    }
+
+    for (const { rule: r, ui } of rows.values()) {
+      ui.reqDd.textContent = (isFa && r.reqFa) ? r.reqFa : r.req;
+      ui.checkDd.textContent = (isFa && r.checkFa) ? r.checkFa : r.check;
+      ui.srcDt.textContent = isFa ? (r.spec === 'practice' ? 'عرف صنعت' : 'متن استاندارد') : (r.spec === 'practice' ? 'The practice' : 'The source says');
+      ui.chkDt.textContent = isFa ? 'چک‌های آدیت' : 'The audit checks';
+    }
+
+    $('foot').textContent = isFa
+      ? `ساخته‌شده از موتور آدیت Vidscope نسخه ${D.version}؛ استنادها بررسی‌شده در تاریخ ${D.checked}. لیست قوانین مستقیماً از انجین استخراج می‌شود. الزامات بازنویسی شده‌اند؛ اسناد رسمی مرجع اصلی هستند.`
+      : `Built from the audit engine of Vidscope ${D.version}; citations checked against the texts on ${D.checked}. The rule list comes from the engine itself, so this register lists exactly what the audit runs. Requirements are summarised, not quoted; the sources are authoritative.`;
+
+    paintProgress();
+    applyFilters();
+  }
+
+  for (const b of document.querySelectorAll('.lang-btn')) {
+    b.addEventListener('click', () => setLang(b.dataset.lang));
+  }
 
   function setReadOnly(message) {
     canWrite = false;
@@ -383,8 +531,9 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
     }
   }
 
+  setLang(currentLang);
   paintAll();
-  $('progress-text').textContent = 'Reviews load when the page opens in Claude.';
+  $('progress-text').textContent = currentLang === 'fa' ? 'بازبینی‌ها هنگام باز شدن صفحه در Claude لود می‌شوند.' : 'Reviews load when the page opens in Claude.';
 
   (async () => {
     const claude = window.claude;
@@ -435,3 +584,4 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
   })();
 })();
 </script>
+
