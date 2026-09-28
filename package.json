@@ -1,7 +1,31 @@
 {
   "name": "vidscope",
   "version": "0.1.0",
-  "description": "See the bytes inside video files: an interactive anatomy viewer for MP4/MOV (ISO-BMFF), Matroska/WebM, MPEG-TS, AVI and FLV.",
+  "description": "See the bytes inside video files: a byte-level anatomy viewer and streaming-standards audit for MP4/MOV, Matroska/WebM, MPEG-TS, AVI and FLV.",
+  "keywords": [
+    "video",
+    "mp4",
+    "isobmff",
+    "matroska",
+    "webm",
+    "mpeg-ts",
+    "hls",
+    "h264",
+    "hevc",
+    "av1",
+    "ffmpeg",
+    "hex-viewer",
+    "audit"
+  ],
+  "homepage": "https://amahdip.github.io/vidscope/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Amahdip/vidscope.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Amahdip/vidscope/issues"
+  },
+  "author": "Amirmahdi Parsaei",
   "license": "MIT",
   "type": "module",
   "bin": {

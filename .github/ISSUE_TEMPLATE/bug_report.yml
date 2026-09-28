@@ -1,0 +1,35 @@
+name: Bug report
+description: Something Vidscope shows, parses or audits is wrong, or the viewer misbehaves.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead. A screenshot helps for anything in the viewer.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The steps, and the file if you can share it. If you cannot share the file, the output of `ffprobe -show_format -show_streams <file>` or `node scripts/dump.mjs <file> --tracks --insights` usually is enough.
+      placeholder: |
+        1. node bin/vidscope.js clip.mp4
+        2. Open the Frames tab
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The commit (`git rev-parse --short HEAD`), or "npx" with the date you ran it, or the hosted page.
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and system
+      placeholder: Chrome 140 on macOS 15; Node 22; FFmpeg 7.1
+  - type: markdown
+    attributes:
+      value: Please never attach files you are not allowed to share. Vidscope runs locally, so a byte range or a structure dump is often all that is needed.
