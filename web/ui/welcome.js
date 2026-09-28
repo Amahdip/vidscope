@@ -48,6 +48,10 @@ export class Welcome {
       h('div', { class: 'wcrow' }, input, h('button', { class: 'btn primary', type: 'submit' }, 'Check')),
       s.lastReport ? h('button', { class: 'btn link', type: 'button', onclick: () => this.app.backToReport() }, `Back to the check of ${s.lastReport.query}`) : null));
     }
+    // What the audit checks against, for whoever has to confirm it: every rule, its source and item.
+    box.append(h('div', { class: 'wcompare wstandards' },
+      h('a', { class: 'btn', href: 'standards.html' }, 'Audit standards'),
+      h('span', null, 'every rule the audit checks, the standard and item it cites, with links to the official texts')));
     box.append(h('div', { class: 'wcompare' },
       h('button', { class: 'btn', onclick: () => this.app.pickCompare(), 'data-tip': 'Put a source video next to the versions converted from it (720p, 480p...): what each conversion changed, the bitrate ladder, key frame alignment, and the frame each version shows at any moment.' }, 'Compare versions of a video…'),
       s.lastCompare ? h('button', { class: 'btn', onclick: () => this.app.backToCompare() }, `Back to the comparison (${s.lastCompare.keys.length} files)`) : null,

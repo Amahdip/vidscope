@@ -6,6 +6,7 @@ Each entry links to the pull request with the details.
 ## 2026-09-28
 
 ### Added
+- An "Audit standards" button on the start page opens the standards register ([#34](https://github.com/Amahdip/vidscope/pull/34)).
 - `vidscope audit --decode` decodes every frame with FFmpeg and reports damaged frames with the
   moment they are shown and their bytes; the conversion check page offers it as "Decode every
   frame" ([#30](https://github.com/Amahdip/vidscope/pull/30)).
