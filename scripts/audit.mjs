@@ -218,8 +218,16 @@ export async function auditInputs(o, log = () => {}) {
           } else measured.quality = q;
         }
         if (Object.keys(measured).length) res = await auditFile(doc, o.expect, { payloadBudget: budget, measured });
+        // A measurement that failed says why, in place of the plain "not measured".
+        res.checks = res.checks.filter((c) => !(c.level === 'skip' && skipped.some((s) => s.id === c.id)));
         res.checks.push(...skipped);
         for (const s of skipped) log(`${input}: ${s.title.toLowerCase()}: ${s.text}`);
+      }
+      if (res.unsupported) {
+        const message = `not audited: ${res.unsupported}${/playlist|manifest/i.test(res.unsupported) ? ' (playlists and manifests are not audited yet; give the renditions)' : ''}`;
+        results.push({ input, file: res.file, error: message, reason: 'unsupported', ms: Date.now() - t0, facts: res.facts, checks: res.checks, item: null });
+        log(`${input}: ${message}`);
+        continue;
       }
       res.input = input;
       res.ms = Date.now() - t0;

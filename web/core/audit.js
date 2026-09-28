@@ -16,6 +16,7 @@ import { parseX26x, rateControl } from '../codecs/encoders.js';
 import { checkLevel } from '../codecs/levels.js';
 import { fmtInt, fmtNum, fmtBitrate, fmtDuration, plural } from './util.js';
 import { remedyFor } from './remedies.js';
+import { identify } from '../formats/raw/index.js';
 
 /** Where each rule comes from. */
 export const SPECS = {
@@ -631,6 +632,7 @@ defineRule({
   id: 'loudness', category: 'Audio', severity: 'warning', spec: 'r128', clause: 'R 128 (h): −23 LUFS ±1 LU; R 128 s2 (g): −20 to −16 LUFS for streams; the target comes from the profile',
   title: 'Integrated loudness on target',
   applies: (c) => c.measured.loudness?.integrated !== undefined,
+  unmeasured: (c) => (c.a ? `No loudness measurement in this run${c.ex.loudness?.integrated !== undefined ? ` (the profile's target is ${c.ex.loudness.integrated} LUFS)` : ''}. Loudness needs the audio decoded: vidscope audit --measure does it with ffmpeg.` : null),
   check: (c) => {
     const i = c.measured.loudness.integrated;
     const want = c.ex.loudness;
@@ -645,6 +647,7 @@ defineRule({
   id: 'true-peak', category: 'Audio', severity: 'warning', spec: 'r128', clause: 'R 128 (m): true peak at most −1 dBTP',
   title: 'True peak below the ceiling',
   applies: (c) => c.measured.loudness?.truePeak !== undefined,
+  unmeasured: (c) => (c.a ? 'No true-peak measurement in this run. It needs the audio decoded: vidscope audit --measure does it with ffmpeg.' : null),
   check: (c) => {
     const tp = c.measured.loudness.truePeak;
     const max = c.ex.loudness?.truePeakMax ?? -1;
@@ -656,6 +659,7 @@ defineRule({
   id: 'av-sync', category: 'Audio', severity: 'critical', spec: 'bt1359', clause: 'sound may lead vision by 45 ms or lag it by 125 ms before viewers notice; 90 / 185 ms before they object',
   title: 'Audio and video in sync',
   applies: (c) => c.measured.sync?.audioLateMs !== undefined,
+  unmeasured: (c) => (c.a && c.v ? 'No sync measurement in this run. Sync is measured on a clip with a known reference (a flash and a beep) put through the same conversion; the audio priming check covers what the file itself shows.' : null),
   check: (c) => {
     // audioLateMs > 0: the sound comes after the picture (lags); < 0: before it (leads).
     // BT.1359 tolerates a lag (sound after light, as in nature) three times more than a lead.
@@ -672,6 +676,7 @@ defineRule({
   id: 'quality', category: 'Video', severity: 'warning', spec: 'practice', clause: 'fidelity to the source',
   title: 'Fidelity to the source',
   applies: (c) => c.measured.quality != null,
+  unmeasured: (c) => (c.v ? 'No comparison with the source in this run: it needs the original upload (vidscope audit --measure --source).' : null),
   check: (c) => {
     const { psnr, ssim, vmaf } = c.measured.quality;
     const parts = [psnr !== undefined ? `PSNR ${fmtNum(psnr, 1)} dB` : null, ssim !== undefined ? `SSIM ${fmtNum(ssim, 3)}` : null, vmaf !== undefined ? `VMAF ${fmtNum(vmaf, 1)}` : null].filter(Boolean);
@@ -681,6 +686,9 @@ defineRule({
 });
 
 // ====================================================================== ladder
+
+/** Size tiers renditions are named after (the short side of a 16:9 frame). */
+const SIZE_TIERS = [144, 240, 360, 480, 540, 720, 1080, 1440, 2160, 4320];
 
 /** Half a frame of the slowest rendition, plus a millisecond of timescale rounding. */
 function keyTolerance(items) {
@@ -835,13 +843,23 @@ defineRule({
     // The rendition's own label is the last "NNNp" before the extension: a name that carries
     // the source size as well (clip-2160p-1080p.mp4) is judged on the 1080p.
     const label = (name) => [...name.replace(/\.\w+$/, '').matchAll(/(\d{3,4})p(?![a-z])/gi)].pop()?.[1];
+    // A name is a size tier, as players and YouTube use it: the short side is at most the tier,
+    // and the picture does not fit inside the tier below's 16:9 frame. A 1920×800 film is 1080p,
+    // a 592×320 or a 264×142 picture keeps its 360p or 144p name.
+    const within = (w, h, t) => Math.max(w, h) <= Math.round((t * 16) / 9 / 2) * 2 + 2 && Math.min(w, h) <= t;
     const off = [];
+    let shaped = 0;
     for (const r of l.results) {
-      const m = label(r.file);
+      const m = Number(label(r.file));
       const { width: w, height: h } = r.facts.video ?? {};
-      if (m && w && h && Number(m) !== Math.min(w, h)) off.push(`${r.file}: labelled ${m}p, is ${w}×${h}`);
+      if (!m || !w || !h) continue;
+      const below = SIZE_TIERS.filter((t) => t < m).pop();
+      if (Math.min(w, h) > m + 1) off.push(`${r.file}: labelled ${m}p, but ${w}×${h} is larger than ${m}p`);
+      else if (below && within(w, h, below)) off.push(`${r.file}: labelled ${m}p, but ${w}×${h} fits a ${below}p frame`);
+      else if (Math.min(w, h) !== m) shaped++;
     }
-    return off.length ? warn(off.join('; '), 'A rendition name that does not match the picture size misleads players, manifests and people.', { value: off }) : pass('Rendition names match their sizes', 'What the name says is what the file holds.');
+    if (off.length) return warn(off.join('; '), 'A rendition name that promises another size than the file holds misleads players, manifests and people.', { value: off });
+    return pass('Rendition names match their size tiers', shaped ? `Each name is the tier its picture belongs to; ${plural(shaped, 'picture')} keeps the source's shape rather than the tier's exact 16:9 size, as a wide film or a cropped source does.` : 'What the name says is what the file holds.');
   },
 });
 
@@ -958,6 +976,7 @@ async function scanFrames(it, budget, onProgress) {
  * always read in full), onProgress.
  */
 export async function auditFile(doc, expect = {}, { onProgress, measured = {}, payloadBudget = 0 } = {}) {
+  if (doc.format?.id === 'raw') return unsupported(doc);
   const ex = { ...DEFAULT_EXPECT, ...expect };
   const it = await summarize(doc, { onProgress, scan: false });
   const scan = it.video ? await scanFrames(it, payloadBudget, onProgress) : { sampled: '' };
@@ -1018,6 +1037,10 @@ export async function auditFile(doc, expect = {}, { onProgress, measured = {}, p
     let res = null;
     try {
       if (r.applies(c)) res = r.check(c);
+      else if (r.unmeasured) {
+        const why = r.unmeasured(c);
+        if (why) res = { level: 'skip', title: `${r.title}: not measured`, text: why };
+      }
     } catch (e) {
       res = { level: 'skip', title: `${r.title}: not checked`, text: String(e?.message ?? e) };
     }
@@ -1033,6 +1056,22 @@ export async function auditFile(doc, expect = {}, { onProgress, measured = {}, p
     encoder: c.parsed ? { label: c.parsed.label, version: c.parsed.version, crf: c.rc?.crf ?? null, maxrate: c.rc?.maxrate ?? null, bufsize: c.rc?.bufsize ?? null, keyint: c.parsed.get('keyint') ?? null } : null,
   };
   return { file: doc.name, facts, checks, item: it };
+}
+
+/**
+ * A file no parser reads (a playlist, an image, an unknown format): one statement that it was
+ * not audited, rather than every rule failing on a file with no tracks. `unsupported` names it.
+ */
+async function unsupported(doc) {
+  const head = await doc.source.read(0, Math.min(doc.size, 16)).catch(() => new Uint8Array(0));
+  const guess = identify(head);
+  const what = guess?.label ?? 'an unrecognised format';
+  const text = /playlist|manifest/i.test(what)
+    ? 'This audit reads media files. Playlists and manifests (HLS, DASH) are not audited yet: audit the renditions they point at.'
+    : 'This audit reads MP4/MOV, Matroska/WebM, MPEG-TS, AVI and FLV files; this one has no parser, so no rule could be applied.';
+  const check = { id: 'input', category: 'Container', level: 'skip', title: `Not audited: ${what}`, text, spec: 'practice', clause: 'audit scope' };
+  const facts = { name: doc.name, size: doc.size, format: 'raw', duration: null, bytesRead: doc.source?.stats?.bytes ?? null, payload: null, index: null, video: null, audio: null, encoder: null };
+  return { file: doc.name, unsupported: what, facts, checks: [check], item: null };
 }
 
 function finish(rule, res, overlay = null) {
@@ -1159,7 +1198,11 @@ export function auditLadder(results, expect = {}) {
   return { files: results.map((r) => r.file), checks };
 }
 
-/** Counts by level, and a compliance figure: passed ÷ (passed + failed), warnings aside. */
+/**
+ * Counts by level, and a compliance figure: passed ÷ checks with a verdict (passed, warned or
+ * failed). Information and checks that could not run (skip) are left out of it and counted
+ * on their own, so a report never reads 100 % while it has findings.
+ */
 export function tally(checks) {
   const t = { pass: 0, warn: 0, fail: 0, info: 0, skip: 0, critical: 0, warning: 0 };
   for (const c of checks) {
@@ -1167,7 +1210,8 @@ export function tally(checks) {
     if (c.severity === 'CRITICAL') t.critical++;
     else if (c.severity === 'WARNING') t.warning++;
   }
-  t.compliance = t.pass + t.fail ? t.pass / (t.pass + t.fail) : null;
+  const judged = t.pass + t.warn + t.fail;
+  t.compliance = judged ? t.pass / judged : null;
   return t;
 }
 
@@ -1178,7 +1222,7 @@ export function auditMarkdown(results, ladders = null, { title = 'Vidscope audit
   const mark = { pass: '✓', warn: '⚠', fail: '✗', info: 'ℹ', skip: '–' };
   const all = [...results.flatMap((r) => r.checks), ...list.flatMap((l) => l.checks ?? [])];
   const t = tally(all);
-  lines.push(`${plural(results.length, 'file')}: ${t.fail} failed (${t.critical} critical), ${t.warn} warnings, ${t.pass} passed${t.compliance !== null ? `; ${fmtNum(t.compliance * 100, 1)} % of the pass/fail checks pass` : ''}.`, '');
+  lines.push(`${plural(results.length, 'file')}: ${t.fail} failed (${t.critical} critical), ${t.warn} warnings, ${t.pass} passed${t.compliance !== null ? `; ${fmtNum(t.compliance * 100, 1)} % of the checks with a verdict pass` : ''}${t.skip ? `; ${plural(t.skip, 'check')} not run (see "not measured")` : ''}.`, '');
   const line = (c) => `- ${mark[c.level]} **${c.title}** — ${c.text}${c.remedy ? `\n  - fix: ${c.remedy.fix}` : ''} _(${SPECS[c.spec]?.name ?? c.spec}${c.clause ? `, ${c.clause}` : ''})_`;
   for (const l of list) {
     if (!l.checks?.length) continue;

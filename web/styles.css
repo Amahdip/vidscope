@@ -1069,6 +1069,7 @@ details.cna { margin: 4px 0 10px; }
 .averdict.warn { border-color: color-mix(in srgb, var(--warn) 50%, var(--line-2)); background: color-mix(in srgb, var(--warn) 6%, var(--bg-1)); }
 .averdict.good { border-color: color-mix(in srgb, var(--good) 45%, var(--line-2)); background: color-mix(in srgb, var(--good) 6%, var(--bg-1)); }
 .averdict.bad .ag { background: var(--bad); } .averdict.warn .ag { background: var(--warn); } .averdict.good .ag { background: var(--good); }
+.averdict.skip .ag { background: var(--text-3); }
 .averdict b { display: block; font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 2px; text-wrap: balance; }
 .averdict span:not(.ag) { font-size: 12.5px; color: var(--text-2); }
 .atiles { display: flex; gap: 8px; flex-wrap: wrap; }

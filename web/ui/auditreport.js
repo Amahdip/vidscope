@@ -43,23 +43,31 @@ export function counts(checks) {
  */
 export function scoreboard(checks, { subject = 'this file', extra = [] } = {}) {
   const n = counts(checks);
-  const state = n.critical ? 'bad' : n.warning ? 'warn' : 'good';
+  // Nothing judged at all (a playlist, an unknown file) is not a clean result.
+  const judged = n.pass + n.warning + n.critical + n.fail + n.info;
+  const state = n.critical ? 'bad' : n.warning ? 'warn' : judged ? 'good' : 'skip';
+  const notRun = n.skip ? `; ${plural(n.skip, 'check')} could not run` : '';
   const verdict = n.critical
     ? `${plural(n.critical, 'critical finding')} in ${subject}`
-    : n.warning ? `No critical findings in ${subject}, ${plural(n.warning, 'warning')}` : `Every check passes in ${subject}`;
+    : n.warning ? `No critical findings in ${subject}, ${plural(n.warning, 'warning')}${notRun}`
+      : judged ? (n.skip ? `Every check that ran passes in ${subject}${notRun}` : `Every check passes in ${subject}`)
+        : `Nothing in ${subject} could be checked`;
   const detail = n.critical
     ? 'Viewers see or hear it, a device refuses it, or a MUST of a standard is broken. Each finding below says why and how to fix it.'
-    : n.warning ? 'Nothing breaks playback; the warnings cost quality, bandwidth or compatibility.' : 'Nothing below needs attention.';
+    : n.warning ? 'Nothing breaks playback; the warnings cost quality, bandwidth or compatibility.'
+      : judged ? (n.skip ? 'The checks that could not run are listed under "Not checked in this run".' : 'Nothing below needs attention.')
+        : (checks.find((c) => c.level === 'skip')?.text ?? 'No rule applies to this file.');
   const tile = (value, label, cls, tip) => h('div', { class: `atile ${cls ?? ''}`, 'data-tip': tip }, h('b', null, value), h('span', null, label));
   return h('div', { class: 'aboard' },
     h('div', { class: `averdict ${state}` },
-      h('span', { class: 'ag' }, state === 'bad' ? '✕' : state === 'warn' ? '!' : '✓'),
+      h('span', { class: 'ag' }, state === 'bad' ? '✕' : state === 'warn' ? '!' : state === 'skip' ? '–' : '✓'),
       h('div', null, h('b', null, verdict), h('span', null, detail))),
     h('div', { class: 'atiles' },
       tile(fmtInt(n.critical), 'critical', n.critical ? 'bad' : null, 'Findings that break playback on real devices, are visible or audible, or break a MUST of a standard.'),
       tile(fmtInt(n.warning), 'warnings', n.warning ? 'warn' : null, 'Findings that cost quality, bandwidth or device reach, or break a SHOULD.'),
       tile(fmtInt(n.pass), 'passed', 'good', 'Checks that hold.'),
-      tile(n.compliance === null ? '–' : `${fmtNum(n.compliance * 100, 1)} %`, 'pass rate', null, 'Passed ÷ (passed + failed); warnings and notes aside.'),
+      tile(n.compliance === null ? '–' : `${fmtNum(n.compliance * 100, 1)} %`, 'checks passed', null, 'Passed ÷ checks with a verdict (passed, warnings and failures). Information, and checks that could not run, are left out.'),
+      n.skip ? tile(fmtInt(n.skip), 'not checked', null, 'Checks that apply but could not run here: a measurement that was not made (loudness, sync, fidelity to the source), or a file this audit does not read. See "Not checked in this run".') : null,
       ...extra));
 }
 
@@ -146,7 +154,7 @@ export function checkList(checks, { filter = null, onOffset, openFailures = fals
   for (const g of names) {
     const list = groups.get(g).slice().sort((a, b) => rank(a) - rank(b));
     const n = counts(list);
-    const others = list.filter((c) => !isFinding(c) && show(c));
+    const others = list.filter((c) => !isFinding(c) && c.level !== 'skip' && show(c));
     if (!others.length) continue;
     const notes = others.filter((c) => c.level === 'info');
     const passes = others.filter((c) => c.level !== 'info');
@@ -164,6 +172,14 @@ export function checkList(checks, { filter = null, onOffset, openFailures = fals
     }
     rest.append(sec);
     shown += others.length;
+  }
+  const skipped = checks.filter((c) => c.level === 'skip'); // coverage, not a severity: never filtered away
+  if (skipped.length) {
+    wrap.append(h('section', { class: 'agroup askip' },
+      h('h4', null, 'Not checked in this run', h('span', { class: 'agc' }, `${skipped.length}`)),
+      h('p', { class: 'prose' }, 'These checks apply to this file but could not run here, so the verdict above does not cover them.'),
+      skipped.map((c) => checkRow(c, { onOffset }))));
+    shown += skipped.length;
   }
   if (rest.childNodes.length) {
     if (findings.length) wrap.append(h('h3', { class: 'asub' }, 'Every other check'));
