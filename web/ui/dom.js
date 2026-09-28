@@ -46,6 +46,13 @@ export function icon(name) {
   return span.firstChild;
 }
 
+/** The Vidscope mark (docs/brand/mark.svg), sized by CSS. */
+export function brandMark() {
+  const span = document.createElement('span');
+  span.innerHTML = '<svg class="bmark" viewBox="0 0 64 64" aria-hidden="true"><rect x="0.75" y="0.75" width="62.5" height="62.5" rx="13.5" fill="#0b0f14" stroke="#2a3542" stroke-width="1.5"/><g fill="none" stroke="#e6edf3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V12h9"/><path d="M43 12h9v9"/><path d="M12 43v9h9"/><path d="M52 43v9h-9"/></g><rect x="19" y="20" width="7" height="24" rx="2" fill="#5ee0a0"/><rect x="29" y="20" width="16" height="10.5" rx="2" fill="#58a6ff"/><rect x="29" y="33.5" width="16" height="10.5" rx="2" fill="#b28cf5"/></svg>';
+  return span.firstChild;
+}
+
 export function toast(msg, ms = 2600) {
   const el = h('div', { class: 'toast', role: 'status' }, msg);
   document.body.append(el);

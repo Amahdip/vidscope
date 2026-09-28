@@ -1,6 +1,6 @@
 // Top bar: app name, file picker, file summary, go-to-offset, mode and theme.
 
-import { h, icon, clear } from './dom.js';
+import { h, icon, clear, brandMark } from './dom.js';
 import { humanBytes, humanSize, fmtDuration, fmtInt } from '../core/util.js';
 
 const MODES = [
@@ -52,7 +52,7 @@ export class Topbar {
     this.themeBtn = h('button', { class: 'iconbtn', onclick: () => this.toggleTheme() });
     const helpBtn = h('button', { class: 'iconbtn', title: 'Keyboard shortcuts (?)', 'aria-label': 'Keyboard shortcuts', onclick: () => app.showHelp() }, icon('help'));
     this.el.append(
-      h('div', { class: 'brand' }, h('b', null, 'Vidscope'), this.anatomy),
+      h('div', { class: 'brand' }, brandMark(), h('b', null, 'Vidscope'), this.anatomy),
       this.fileBtn,
       this.summary,
       h('div', { class: 'top-right' }, this.goto, h('div', { class: 'seg', role: 'group', 'aria-label': 'Detail level' }, this.modeButtons), this.themeBtn, helpBtn),

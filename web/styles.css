@@ -202,7 +202,8 @@ code, .mono { font-family: var(--mono); }
 @media (max-width: 860px) {
   .topbar { flex-wrap: wrap; }
 }
-.brand { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+.brand { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.brand .bmark { width: 20px; height: 20px; flex: none; }
 .brand b { font-size: 15px; letter-spacing: 0.2px; }
 .brand span { color: var(--text-3); font-size: 12.5px; }
 .filebtn {
