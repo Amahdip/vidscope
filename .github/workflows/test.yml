@@ -1,0 +1,39 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The tests compare what Vidscope reads with FFmpeg's own demuxers and build their
+      # fixtures with its encoders, so they follow one FFmpeg release line (8.1, with x264,
+      # x265, SVT-AV1, libaom, libvpx, Opus, Vorbis and LAME). Distribution packages lag
+      # behind and differ in encoder options and in how they count some frames.
+      - name: Install FFmpeg 8.1
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/ffmpeg.tar.xz" https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz
+          mkdir -p "$RUNNER_TEMP/ffmpeg"
+          tar -xJf "$RUNNER_TEMP/ffmpeg.tar.xz" -C "$RUNNER_TEMP/ffmpeg" --strip-components=1
+          echo "$RUNNER_TEMP/ffmpeg/bin" >> "$GITHUB_PATH"
+      - name: FFmpeg version
+        run: ffmpeg -hide_banner -version | head -1
+      - name: Make the sample files
+        run: npm run samples
+      - name: Test
+        run: npm test

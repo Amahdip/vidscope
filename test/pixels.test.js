@@ -89,7 +89,9 @@ test('bilinear scaling matches FFmpeg, and so does PSNR against a bigger referen
   const p = Number(/psnr_y:(\S+)/.exec(ffStats('ladder-270p.mp4', 'ladder-source.mkv', '[0:v]scale=640:360:flags=bilinear[s];[s][1:v]psnr=stats_file=-', 25))[1]);
   const c = comparePictures({ luma: src }, { luma: small });
   assert.ok(c.scaled);
-  assert.ok(Math.abs(c.psnr - p) < 0.01, `${c.psnr} vs FFmpeg ${p}`);
+  // FFmpeg's bilinear scaler rounds a little differently in its x86 and ARM code paths
+  // (35.09 dB against 35.08 on the same file), so the comparison allows 0.05 dB.
+  assert.ok(Math.abs(c.psnr - p) < 0.05, `${c.psnr} vs FFmpeg ${p}`);
 });
 
 test('every container hands the decoder its configuration record', { skip: !haveSample('h264-aac.mp4') && 'run npm run samples' }, async () => {

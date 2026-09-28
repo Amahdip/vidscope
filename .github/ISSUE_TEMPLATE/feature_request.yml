@@ -1,0 +1,21 @@
+name: Feature request
+description: A format, a check, a view or an explanation Vidscope should have.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you want to do
+      description: The question you are trying to answer about a file, or the job you are trying to get done. Say who it is for if that matters.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How Vidscope could answer it. For an audit rule, name the standard and the item or clause it comes from.
+  - type: textarea
+    id: example
+    attributes:
+      label: An example file or source
+      description: A file, a public sample, or the part of a specification that describes the structure.

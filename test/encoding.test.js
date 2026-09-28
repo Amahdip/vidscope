@@ -46,6 +46,10 @@ function ffmpeg(args) {
 
 let n = 0;
 /** Encode a short test pattern and return the path. `passes` runs FFmpeg's two-pass mode. */
+// x265 tools the explanation test switches on, and the option each makes x265 write.
+const X265_TOOLS = [['hme=1', 'hme-search'], ['frame-dup=1', 'dup-threshold'], ['rskip=2', 'rskip-edge-threshold'], ['zones=0,4,q=20', 'zones'], ['display-window=0,0,8,0', 'display-window'], ['sar=5\\:4', 'sar-width:sar-height'], ['chromaloc=2', 'chromaloc-top'], ['overscan=crop', 'overscan-crop']];
+const X265_WRITTEN = [];
+
 function encode(codec, args, { size = '160x90', rate = 25, duration = 0.4, passes = false } = {}) {
   const out = path.join(TMP, `enc-${++n}.mp4`);
   const quiet = codec === 'libx265' ? ['-x265-params', 'log-level=error'] : [];
@@ -98,7 +102,7 @@ test('encoders: parses the x264 SEI of h264-aac.mp4', { skip: !haveSample('h264-
   assert.match(sei.where, /first frame/);
   const p = parseX26x(sei.text);
   assert.equal(p.encoder, 'x264');
-  assert.match(p.label, /^x264 core \d+ r\d+$/);
+  assert.match(p.label, /^x264 core \d+( r\d+)?$/, 'some x264 builds write no revision number');
   assert.ok(p.options.length >= 40);
   // make-samples.sh: -preset veryfast -g 50 -bf 2, default CRF
   assert.equal(p.get('rc'), 'crf');
@@ -204,9 +208,19 @@ async function optionStrings() {
       ['-preset', 'ultrafast', '-crf', '26', '-maxrate', '500k', '-bufsize', '1000k'],
       ['-preset', 'ultrafast', '-qp', '30'],
     ]) out.push((await seiOf(encode('libx265', args))).text);
-    // x265 turns HME off below 540 lines and frame duplication off without HRD and VBV
-    const tools = ['-preset', 'ultrafast', '-maxrate', '500k', '-bufsize', '1000k', '-x265-params', 'log-level=error:hrd=1:hme=1:frame-dup=1:rskip=2:zones=0,4,q=20:display-window=0,0,8,0:sar=5\\:4:chromaloc=2:overscan=crop'];
-    out.push((await seiOf(encode('libx265', tools, { size: '960x540', duration: 0.2 }))).text);
+    // x265 turns HME off below 540 lines and frame duplication off without HRD and VBV. Older
+    // x265 builds lack some of these tools: keep the ones this build accepts.
+    const tools = (params) => ['-preset', 'ultrafast', '-maxrate', '500k', '-bufsize', '1000k', '-x265-params', ['log-level=error', 'hrd=1', ...params].join(':')];
+    const accepted = X265_TOOLS.filter(([param]) => {
+      try {
+        encode('libx265', tools([param]), { size: '960x540', duration: 0.08 });
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    X265_WRITTEN.push(...accepted.map(([, key]) => key));
+    out.push((await seiOf(encode('libx265', tools(accepted.map(([param]) => param)), { size: '960x540', duration: 0.2 }))).text);
     out.push((await seiOf(encode('libx265', ['-preset', 'ultrafast', '-b:v', '300k'], { passes: true }))).text);
   }
   return out;
@@ -228,7 +242,7 @@ test('encoders: every option x264 and x265 write has an explanation', async () =
   }
   assert.deepEqual([...unknown], [], 'options without an explanation');
   if (X264) for (const k of ['vbv_maxrate', 'vbv_bufsize', 'crf_max', 'nal_hrd', 'filler', 'bitrate', 'ratetol', 'qp', 'slices', 'mastering-display', 'cll', 'zones', 'pb_ratio', 'cplxblur', 'qblur']) assert.ok(seen.x264.has(k), `x264 wrote ${k}`);
-  if (X265) for (const k of ['vbv-maxrate', 'vbv-bufsize', 'vbv-init', 'crf-max', 'qp', 'bitrate', 'stats-read', 'hme-search', 'dup-threshold', 'rskip-edge-threshold', 'zones', 'display-window', 'sar-width:sar-height', 'chromaloc-top', 'overscan-crop']) assert.ok(seen.x265.has(k), `x265 wrote ${k}`);
+  if (X265) for (const k of ['vbv-maxrate', 'vbv-bufsize', 'vbv-init', 'crf-max', 'qp', 'bitrate', 'stats-read', ...X265_WRITTEN]) assert.ok(seen.x265.has(k), `x265 wrote ${k}`);
 });
 
 // ------------------------------------------------------------------ rate control
