@@ -170,6 +170,21 @@ Options: `--port <n>` (default 8766; the next free port is used if taken), `--ho
 The server binds to localhost, answers only requests addressed to localhost (a DNS
 rebinding guard), and only serves the files you named.
 
+### Auditing in the viewer
+
+The **Audit** tab judges the open file against the same rules as `vidscope audit`: a verdict,
+"What to fix" ordered by severity, every other check by category, and for each finding the
+standard and clause, what was measured against what was expected, the usual cause and fix, and
+a jump to the bytes it is about. A profile (a JSON file with the keys `--expect-file` takes)
+adds what a service intends on top of the standards. The report copies as Markdown and saves as
+JSON or SARIF. In **Compare**, the renditions of one video get a ladder audit: a conformance
+matrix of rules against renditions and the checks across them.
+
+Served next to an audit server that answers under `api/audit/` (a separate service that knows a
+platform's registry and storage), the viewer also offers **Check a conversion**: type a video id
+or a rendition URL, get the whole ladder audited, and open any rendition in the viewer through
+the server's byte proxy.
+
 ### Auditing files
 
 `vidscope audit` checks files against the streaming standards without a browser, and files

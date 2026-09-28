@@ -16,6 +16,7 @@ import { CenterPane } from './ui/centerpane.js';
 import { RightPane } from './ui/rightpane.js';
 import { Welcome } from './ui/welcome.js';
 import { CompareView, openComparePicker } from './ui/compare.js';
+import { ReportView } from './ui/report.js';
 
 const store = createStore({
   files: [],
@@ -35,6 +36,10 @@ const store = createStore({
   samplesReady: false,
   compare: null, // { keys: [file keys], ref: key } while comparing versions of a video
   lastCompare: null, // the comparison left to inspect one of its files
+  auditProfile: loadPref('auditProfile', null), // the expectation profile audits use
+  auditServer: null, // an audit server next to the app (api/audit/info), when there is one
+  report: null, // { query, status: 'loading'|'done'|'error', data?, error? } of a conversion check
+  lastReport: null, // the report left to inspect one of its renditions
 });
 
 // Opening a file and resolving a selection are both asynchronous; a newer one makes an older
@@ -43,6 +48,8 @@ const store = createStore({
 let openSeq = 0;
 let selSeq = 0;
 let localCount = 0;
+let remoteCount = 0;
+let checkSeq = 0;
 
 /** Byte range a field hit covers (a single cell for table entries). */
 export function hitRange(hit) {
@@ -117,9 +124,11 @@ const app = {
 
   /** The byte source of a file entry: the local server, or a file from this computer. */
   sourceFor(entry) {
-    return entry.kind === 'server'
-      ? new HttpSource(`api/files/${entry.id}/data`, entry.size, entry.name)
-      : new BlobSource(entry.file, entry.name);
+    if (entry.kind === 'server') return new HttpSource(`api/files/${entry.id}/data`, entry.size, entry.name);
+    // A rendition from a conversion check: the audit server reads it from the storage, which
+    // the browser cannot reach, a range at a time.
+    if (entry.kind === 'remote') return new HttpSource(`api/audit/file?u=${encodeURIComponent(entry.url)}`, entry.size, entry.name);
+    return new BlobSource(entry.file, entry.name);
   },
 
   async openPath(path) {
@@ -146,7 +155,8 @@ const app = {
     const prev = store.get().doc;
     if (prev && prev !== opened && !this.compareView?.holds(prev)) cancelFrameScans(prev);
     const cmp = store.get().compare;
-    store.set({ current: entry, loading: opened ? null : { name: entry.name, done: 0, total: entry.size }, error: null, compare: null, lastCompare: cmp ?? store.get().lastCompare });
+    const rep = store.get().report;
+    store.set({ current: entry, loading: opened ? null : { name: entry.name, done: 0, total: entry.size }, error: null, compare: null, lastCompare: cmp ?? store.get().lastCompare, report: null, lastReport: rep?.status === 'done' ? rep : store.get().lastReport });
     let lastTick = 0;
     try {
       const doc = opened ?? await openDocument(this.sourceFor(entry), {
@@ -201,6 +211,16 @@ const app = {
       url.searchParams.delete('compare');
       url.searchParams.delete('ref');
     }
+    // A conversion check can be shared: ?check=12345678&profile=policy runs it again.
+    const rep = store.get().report;
+    if (rep?.query && !cmp) {
+      url.searchParams.set('check', rep.query);
+      if (rep.profile) url.searchParams.set('profile', rep.profile);
+      url.searchParams.delete('file');
+    } else {
+      url.searchParams.delete('check');
+      url.searchParams.delete('profile');
+    }
     history.replaceState(null, '', url.toString().replace(/%2C/g, ','));
   },
 
@@ -230,6 +250,106 @@ const app = {
 
   pickCompare() {
     openComparePicker(this);
+  },
+
+  // ------------------------------------------------------------ conversion checks (audit server)
+
+  /** Is there an audit server next to the app (serve.mjs behind the same host)? */
+  async loadAuditServer() {
+    try {
+      const info = await fetch('api/audit/info').then((r) => (r.ok ? r.json() : null));
+      store.set({ auditServer: info?.name === 'vidscope-audit' ? info : null });
+    } catch {
+      store.set({ auditServer: null });
+    }
+  },
+
+  /** Show the conversion check page, empty or with a query to run. */
+  showReport(query = '', profile = null) {
+    hideTip();
+    if (query) {
+      this.runCheck(query, profile ?? store.get().auditServer?.defaultProfile ?? 'policy');
+      return;
+    }
+    store.set({ report: { query: '', profile, status: 'empty' }, compare: null });
+    document.title = 'Check a conversion — Vidscope';
+    this.updateUrl();
+  },
+
+  async runCheck(query, profile = store.get().auditServer?.defaultProfile ?? 'policy') {
+    const my = ++checkSeq;
+    store.set({ report: { query, profile, status: 'loading', started: Date.now() }, compare: null });
+    document.title = `Checking ${query} — Vidscope`;
+    this.updateUrl();
+    try {
+      const res = await fetch(`api/audit/check?q=${encodeURIComponent(query)}&profile=${encodeURIComponent(profile)}`);
+      const body = await res.json().catch(() => ({}));
+      if (my !== checkSeq) return;
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      store.set({ report: { query, profile, status: 'done', data: body } });
+      document.title = `${body.video?.id ? `Video ${body.video.id}` : body.label} — Vidscope`;
+    } catch (e) {
+      if (my !== checkSeq) return;
+      store.set({ report: { query, profile, status: 'error', error: e.message } });
+    }
+  },
+
+  closeReport() {
+    const rep = store.get().report;
+    checkSeq++;
+    store.set({ report: null, lastReport: rep?.status === 'done' ? rep : store.get().lastReport });
+    document.title = store.get().current ? `${store.get().current.name} — Vidscope` : 'Vidscope';
+    this.updateUrl();
+  },
+
+  backToReport() {
+    const rep = store.get().lastReport;
+    if (!rep) return;
+    store.set({ report: rep, compare: null });
+    this.updateUrl();
+  },
+
+  checkLink(query, profile) {
+    const url = new URL(location.href);
+    url.search = '';
+    url.hash = '';
+    url.searchParams.set('check', query);
+    if (profile) url.searchParams.set('profile', profile);
+    return url.href;
+  },
+
+  /** A rendition from a check as a file entry, read through the audit server. */
+  remoteEntry(r, data) {
+    const files = store.get().files;
+    const known = files.find((f) => f.kind === 'remote' && f.url === r.url);
+    if (known) return known;
+    const entry = { kind: 'remote', key: `r${++remoteCount}`, name: r.file, size: r.size, url: r.url, dir: `check ${data?.label ?? ''}`.trim() };
+    store.set({ files: [...files, entry] });
+    return entry;
+  },
+
+  /** The profile a check used becomes the one the Audit tab and Compare use. */
+  useCheckProfile(profile) {
+    if (!profile) return;
+    const id = profile === 'standards' ? 'standards' : `server:${profile}`;
+    savePref('auditProfile', id);
+    store.set({ auditProfile: id });
+  },
+
+  async openRemote(r, { data, audit = false } = {}) {
+    const entry = this.remoteEntry(r, data);
+    this.useCheckProfile(data?.profile);
+    if (audit) store.set({ centerTab: 'audit' });
+    await this.openEntry(entry);
+  },
+
+  compareRemote(data) {
+    const entries = data.renditions.filter((r) => r.size).map((r) => this.remoteEntry(r, data));
+    if (entries.length < 2) return;
+    this.useCheckProfile(data.profile);
+    const rep = store.get().report;
+    store.set({ report: null, lastReport: rep?.status === 'done' ? rep : store.get().lastReport });
+    this.openCompare(entries.map((e) => e.key), entries[0].key);
   },
 
   /** Leave the comparison to look at one of its files (and one of its frames) in the byte viewer. */
@@ -552,11 +672,14 @@ async function boot() {
     if (changed.has('leftTab')) savePref('leftTab', s.leftTab);
     if (changed.has('centerTab')) savePref('centerTab', s.centerTab);
     const empty = !s.doc;
+    const reporting = !!s.report && !s.compare;
     const el = document.getElementById('app');
     el.classList.toggle('empty', empty);
     el.classList.toggle('comparing', !!s.compare);
-    document.getElementById('welcome').hidden = !empty || !!s.compare;
+    el.classList.toggle('reporting', reporting);
+    document.getElementById('welcome').hidden = !empty || !!s.compare || reporting;
     document.getElementById('compare').hidden = !s.compare;
+    document.getElementById('report').hidden = !reporting;
   });
 
   app.topbar = new Topbar(document.getElementById('topbar'), app);
@@ -567,6 +690,7 @@ async function boot() {
   app.right = new RightPane(document.getElementById('right'), app);
   app.welcome = new Welcome(document.getElementById('welcome'), app);
   app.compareView = new CompareView(document.getElementById('compare'), app);
+  app.reportView = new ReportView(document.getElementById('report'), app);
   document.getElementById('app').classList.add('empty');
   document.getElementById('welcome').hidden = false;
 
@@ -574,9 +698,13 @@ async function boot() {
   installKeys();
   installSplitters();
 
-  await app.loadServerFiles();
+  await Promise.all([app.loadServerFiles(), app.loadAuditServer()]);
   const files = store.get().files;
   const params = new URL(location.href).searchParams;
+  if (params.get('check') && store.get().auditServer) {
+    app.showReport(params.get('check'), params.get('profile'));
+    return;
+  }
   const byId = (id) => files.find((f) => f.kind === 'server' && String(f.id) === id);
   const cmp = (params.get('compare') ?? '').split(',').map(byId).filter(Boolean);
   if (cmp.length) {

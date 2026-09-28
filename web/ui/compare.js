@@ -9,7 +9,10 @@ import { loadPref, savePref } from './store.js';
 import { chipClass } from './frames.js';
 import { PixelScope } from './pixels.js';
 import { openDocument } from '../formats/index.js';
-import { cancelFrameScans } from '../core/frames.js';
+import { cancelFrameScans, AUTO_SCAN_BYTES } from '../core/frames.js';
+import { auditFile, auditLadder, auditMarkdown, buildReport, toSarif } from '../core/audit.js';
+import { scoreboard, matrix, checkList, exportButtons } from './auditreport.js';
+import { listProfiles, currentProfile, profileExpect } from './profiles.js';
 import { frameLabel, explainFrame } from '../codecs/frametype.js';
 import { fmtInt, fmtNum, fmtDuration, fmtBitrate, humanBytes, humanSize, plural } from '../core/util.js';
 import {
@@ -57,7 +60,7 @@ export class CompareView {
     el.classList.add('cmp');
     app.store.subscribe((s, ch) => {
       if (ch.has('compare')) this.sync();
-      else if (s.compare && ch.has('mode')) this.render();
+      else if (s.compare && (ch.has('mode') || ch.has('auditProfile') || ch.has('auditServer'))) this.render();
       if (s.compare && ch.has('theme')) this.draw();
     });
     new ResizeObserver(() => {
@@ -183,6 +186,7 @@ export class CompareView {
         body.append(this.timeline(items));
         body.append(this.scope(items));
         body.append(this.pixels.section(items));
+        body.append(this.auditSection(slots.filter((sl) => sl.item?.doc)));
       }
       if (s.mode !== 'raw') {
         const learn = h('div', { class: 'flearn cmplearn' }, h('h4', null, 'Learn'));
@@ -331,6 +335,78 @@ export class CompareView {
       h('div', { class: 'cmpsh' }, h('h4', { 'data-tip': CMP_TIPS.ladder }, 'Bitrate ladder'),
         h('span', { class: 'legend dim' }, h('i', { class: 'lgbar' }), 'average', h('i', { class: 'lgtick' }), 'peak second')),
       list);
+  }
+
+  // ------------------------------------------------------------ standards audit of the ladder
+
+  /**
+   * Every compared file audited with the chosen profile, and the ladder checks across them:
+   * key frames aligned, a segment length that fits, one audio, bitrate steps, names and sizes.
+   * The documents are already open and indexed, so this costs little beyond the frame scan.
+   */
+  auditSection(slots) {
+    const s = this.app.store.get();
+    const profile = currentProfile(s.auditServer, s.auditProfile);
+    const profileName = listProfiles(s.auditServer).find((p) => p.id === profile)?.name ?? profile;
+    const key = `${profile}|${slots.map((sl) => sl.key).join(',')}`;
+    const tools = h('div', { class: 'cmpsbtn' });
+    const box = h('div', { class: 'caudit' });
+    const sec = h('div', { class: 'cmpsec' },
+      h('div', { class: 'cmpsh' },
+        h('h4', { 'data-tip': 'Each file judged against the streaming standards and the chosen profile, and the ladder checks across files. Change the profile in any file\'s Audit tab.' }, 'Standards audit'),
+        h('span', { class: 'dim' }, `profile: ${profileName}`), tools),
+      box);
+    const fill = (res) => {
+      if (!box.isConnected && res !== this.auditRun) return;
+      const { results, ladders, expect } = res;
+      const all = [...results.flatMap((r) => r.checks), ...ladders.flatMap((l) => l.checks)];
+      box.replaceChildren(
+        scoreboard(all, { subject: 'this ladder' }),
+        matrix(results, ladders, {
+          showAll: this.matrixAll,
+          onCell: (r) => {
+            const slot = slots.find((sl) => sl.item?.doc === r.item?.doc);
+            if (!slot) return;
+            this.app.inspectCompared(slot.entry, slot.item.doc).then(() => this.app.store.set({ centerTab: 'audit' }));
+          },
+        }),
+        h('div', { class: 'cmpnote dim' }, 'Click a cell to open that file\'s full audit.'),
+        ladders.length ? checkList(ladders.flatMap((l) => l.checks), { onOffset: null }) : null);
+      tools.replaceChildren(
+        h('button', { class: 'btn', onclick: () => { this.matrixAll = !this.matrixAll; fill(res); }, 'data-tip': 'Show every rule in the matrix, or only those that fail or warn somewhere' }, this.matrixAll ? 'failing rules only' : 'all rules'),
+        exportButtons({
+          name: 'ladder',
+          markdown: () => auditMarkdown(results, ladders, { title: `Vidscope audit of ${results.length} renditions (${profileName})` }),
+          report: () => buildReport({ results, ladders }, { expect }),
+          sarif: () => toSarif(buildReport({ results, ladders }, { expect })),
+        }));
+    };
+    if (this.auditRun?.key === key && this.auditRun.done) {
+      fill(this.auditRun);
+      return sec;
+    }
+    box.append(h('div', { class: 'empty-state' }, `Auditing ${plural(slots.length, 'file')}…`));
+    if (this.auditRun?.key !== key) {
+      const run = { key, done: false };
+      this.auditRun = run;
+      (async () => {
+        const expect = await profileExpect(profile);
+        const results = [];
+        for (const sl of slots) {
+          const budget = sl.entry?.kind === 'remote' ? 32 * 1048576 : AUTO_SCAN_BYTES;
+          const r = await auditFile(sl.item.doc, expect, { payloadBudget: budget });
+          r.input = sl.entry?.url ?? sl.entry?.name ?? r.file;
+          results.push(r);
+        }
+        const ladders = results.length > 1 ? [{ files: results.map((r) => r.file), inputs: results.map((r) => r.input), ...auditLadder(results, expect) }] : [];
+        Object.assign(run, { results, ladders, expect, done: true });
+        if (this.auditRun === run) this.scheduleRender();
+      })().catch((e) => {
+        console.error(e);
+        if (this.auditRun === run) box.replaceChildren(h('div', { class: 'empty-state' }, `The audit failed: ${e.message}`));
+      });
+    }
+    return sec;
   }
 
   // ------------------------------------------------------------ timeline: bitrate and key frames

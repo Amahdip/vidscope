@@ -12,7 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { openDocument } from '../web/formats/index.js';
 import { HttpSource } from '../web/core/source.js';
 import { NodeFileSource } from './node-source.mjs';
-import { auditFile, auditLadder, auditMarkdown, tally, allRules, DEFAULT_EXPECT, SPECS } from '../web/core/audit.js';
+import { auditFile, auditLadder, auditMarkdown, tally, allRules, SPECS, mergeExpect, validateExpect, buildReport, toSarif as sarifOf } from '../web/core/audit.js';
 import { contentStem } from '../web/core/compare.js';
 
 const run = promisify(execFile);
@@ -51,38 +51,7 @@ be audited (the other inputs still are), 64 for a usage error, 70 when ffmpeg wa
 but could not run.
 `;
 
-// The keys the rules read. A misspelt key would silently check nothing, so it is an error.
-const EXPECT_KEYS = {
-  gop: 'number', gopMax: 'number', fpsMax: 'number', fpsMin: 'number', peakRatio: 'number', segments: 'array',
-  colour: { primaries: 'number', transfer: 'number', matrix: 'number' },
-  audio: { required: 'boolean', codec: 'string', sampleRate: 'number', channelsMax: 'number', minBitratePerChannel: 'number' },
-  loudness: { integrated: 'number', tolerance: 'number', truePeakMax: 'number' },
-  overlay: { severity: 'object', levelCap: 'array' },
-};
-
-/** Throw on a key the rules do not read, or a value of the wrong kind; keys starting with _ are comments. */
-export function validateExpect(ex, shape = EXPECT_KEYS, path = '') {
-  for (const [k, v] of Object.entries(ex ?? {})) {
-    if (k.startsWith('_')) continue;
-    const want = shape[k];
-    const at = path ? `${path}.${k}` : k;
-    if (want === undefined) throw new Error(`unknown expectation ${at} (known: ${Object.keys(shape).join(', ')})`);
-    if (typeof want === 'object') {
-      if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(`${at} wants an object`);
-      validateExpect(v, want, at);
-    } else if (want === 'array' ? !Array.isArray(v) : typeof v !== want) throw new Error(`${at} wants ${want === 'array' ? 'a list' : `a ${want}`}, got ${JSON.stringify(v)}`);
-  }
-  return ex;
-}
-
-/** Merge b into a: nested plain objects merge, everything else is replaced. */
-export function mergeExpect(a, b) {
-  for (const [k, v] of Object.entries(b ?? {})) {
-    if (v && typeof v === 'object' && !Array.isArray(v) && a[k] && typeof a[k] === 'object' && !Array.isArray(a[k])) mergeExpect(a[k], v);
-    else a[k] = v;
-  }
-  return a;
-}
+export { mergeExpect, validateExpect };
 
 function parseArgs(argv) {
   const o = { inputs: [], headers: {}, json: null, md: null, sarif: null, expect: {}, ladder: null, budget: null, digest: false, measure: false, source: null, rules: false, quiet: false, help: false };
@@ -319,17 +288,8 @@ function summaryLine(checks) {
   return `${t.fail} failed (${t.critical} critical), ${t.warn} warnings, ${t.pass} passed`;
 }
 
-export function toReport({ results, ladders }, o) {
-  const all = [...results.flatMap((r) => r.checks), ...ladders.flatMap((l) => l.checks)];
-  return {
-    tool: { name: 'vidscope', command: 'audit', version: readVersion() },
-    generated: new Date().toISOString(),
-    expect: mergeExpect(structuredClone(DEFAULT_EXPECT), o.expect),
-    summary: { ...tally(all), errors: results.filter((r) => r.error).length },
-    files: results.map((r) => ({ input: r.input, file: r.file, ms: r.ms, ...(r.error ? { error: r.error, reason: r.reason } : {}), facts: r.facts, checks: r.checks })),
-    ladders: ladders.map((l) => ({ files: l.files, inputs: l.inputs, checks: l.checks })),
-    specs: SPECS,
-  };
+export function toReport(out, o) {
+  return buildReport(out, { expect: o.expect, version: readVersion() });
 }
 
 function readVersion() {
@@ -343,30 +303,9 @@ function readVersion() {
 /** A URI for SARIF: the URL itself, or a file: URL of the path given. */
 const sarifUri = (input) => (isUrl(input) ? input : pathToFileURL(path.resolve(input)).href);
 
-/** SARIF 2.1.0: one result per warning or failure, the input as the artifact, the byte offset as the region. */
+/** SARIF 2.1.0, with file: URLs for paths and the URL itself for URL inputs. */
 export function toSarif(report) {
-  const rules = allRules();
-  const results = [];
-  const emit = (inputs, c) => {
-    if (!c.severity) return;
-    results.push({
-      ruleId: c.id,
-      level: c.severity === 'CRITICAL' ? 'error' : c.severity === 'WARNING' ? 'warning' : 'note',
-      message: { text: `${c.title}. ${c.text}${c.remedy ? ` Fix: ${c.remedy.fix}` : ''}` },
-      locations: inputs.map((input) => ({ physicalLocation: { artifactLocation: { uri: sarifUri(input) }, ...(inputs.length === 1 && c.offset !== undefined ? { region: { byteOffset: c.offset } } : {}) } })),
-      properties: { value: c.value, expected: c.expected, spec: SPECS[c.spec]?.name, clause: c.clause },
-    });
-  };
-  for (const f of report.files) for (const c of f.checks) emit([f.input ?? f.file], c);
-  for (const l of report.ladders) for (const c of l.checks) emit(l.inputs ?? l.files, c);
-  return {
-    version: '2.1.0',
-    $schema: 'https://json.schemastore.org/sarif-2.1.0.json',
-    runs: [{
-      tool: { driver: { name: 'vidscope audit', version: report.tool.version ?? '0', rules: rules.map((r) => ({ id: r.id, name: r.title, shortDescription: { text: r.title }, helpUri: SPECS[r.spec]?.url, properties: { category: r.category, severity: r.severity, clause: r.clause } })) } },
-      results,
-    }],
-  };
+  return sarifOf(report, { uriFor: sarifUri });
 }
 
 /** Write a report to a file, or to standard output; resolves once the bytes are handed to the OS. */
