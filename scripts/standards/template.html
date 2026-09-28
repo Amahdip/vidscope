@@ -1,7 +1,7 @@
 <title>Audit Standards Register</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&family=Vazirmatn:wght@400;500;600&display=swap">
 <style>
 :root {
   --paper: #f4f5f1;
@@ -98,7 +98,7 @@ section { display: grid; gap: 18px; }
 /* sources table */
 .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet); }
 table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 14px; }
-th, td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+th, td { text-align: start; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 tr:last-child td { border-bottom: 0; }
 th { font: 500 11px/1.2 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--paper); }
 td.note { color: var(--muted); font-size: 13px; max-width: 42ch; }
@@ -109,7 +109,7 @@ td .src { font-weight: 600; }
 .filters label { display: grid; gap: 4px; font: 500 11px/1.2 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
 .filters select, .filters input { font: 14px/1.2 var(--sans); color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 5px; padding: 7px 9px; min-width: 0; }
 .filters input { width: 200px; max-width: 100%; }
-.filters .count { margin-left: auto; font-size: 13px; color: var(--muted); align-self: center; }
+.filters .count { margin-inline-start: auto; font-size: 13px; color: var(--muted); align-self: center; }
 
 /* groups and rules */
 .group { display: grid; gap: 0; }
@@ -161,21 +161,42 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
   .wrap { padding-inline: 16px; padding-block: 24px 48px; gap: 36px; }
   .rule { grid-template-columns: 1fr; gap: 8px; }
   .cite { font-size: 17px; }
-  .cite small { display: inline; margin-left: 8px; }
+  .cite small { display: inline; margin-inline-start: 8px; }
   .says { grid-template-columns: 1fr; }
   .filters { position: static; }
-  .filters .count { margin-left: 0; width: 100%; }
+  .filters .count { margin-inline-start: 0; width: 100%; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .rv-btn { transition: background-color 120ms ease, border-color 120ms ease; }
 }
+/* language switch; Farsi reads right to left */
+.mast-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.lang { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; background: var(--sheet); }
+.lang button { font: 500 13px/1 var(--sans); padding: 6px 12px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.lang button:hover { color: var(--ink); }
+.lang button[aria-pressed="true"] { background: var(--accent); color: var(--sheet); }
+:root[lang="fa"] { --sans: 'IBM Plex Sans', 'Vazirmatn', system-ui, sans-serif; --serif: 'IBM Plex Serif', 'Vazirmatn', Georgia, serif; }
+:root[lang="fa"] body { line-height: 1.8; }
+/* Persian letters join: no letter spacing, no capitals, no monospace on labels. */
+:root[lang="fa"] :is(.eyebrow, .facts dt, th, .filters label, .says dt) { font-family: var(--sans); font-size: 12.5px; letter-spacing: 0; text-transform: none; }
+:root[lang="fa"] :is(.tag, .cite small) { font-family: var(--sans); letter-spacing: 0; }
+:root[lang="fa"] h1 { letter-spacing: 0; }
+:root[dir="rtl"] :is(.cite, .rid, .gi, .tag) { unicode-bidi: isolate; }
+/* English inside the Farsi page (rule titles, clause summaries, source names) keeps its own direction. */
+:root[dir="rtl"] :is(.rtop h3, .clause) { unicode-bidi: plaintext; text-align: right; }
 </style>
 
 <div class="wrap">
   <header class="mast">
-    <p class="eyebrow"><a class="applink" href="./">← Vidscope</a><span class="applink"> · </span>Conversion audit · the standards behind it</p>
-    <h1>Audit Standards Register</h1>
-    <p class="lede">Every check the conversion audit runs, the published standard it comes from, and the exact item it cites. Each requirement is summarised in our own words: open the source to confirm it<span class="hosted-only">, then mark the rule confirmed or raise a question. Reviews are saved here for everyone with access</span>.</p>
+    <div class="mast-top">
+      <p class="eyebrow"><a class="applink" href="./" data-t="back">← Vidscope</a><span class="applink"> · </span><span data-t="eyebrow">Conversion audit · the standards behind it</span></p>
+      <div class="lang" role="group" aria-label="Language · زبان">
+        <button type="button" data-lang="en" lang="en" aria-pressed="true">English</button>
+        <button type="button" data-lang="fa" lang="fa" aria-pressed="false">فارسی</button>
+      </div>
+    </div>
+    <h1 data-t="title">Audit Standards Register</h1>
+    <p class="lede"><span data-t="lede">Every check the conversion audit runs, the published standard it comes from, and the exact item it cites. Each requirement is summarised in our own words: open the source to confirm it.</span> <span class="hosted-only" data-t="lede-hosted">Then mark the rule confirmed or raise a question. Reviews are saved here for everyone with access.</span></p>
     <dl class="facts" id="facts"></dl>
     <div class="progress" aria-live="polite">
       <div class="bar" id="bar" role="img" aria-label="Review progress"></div>
@@ -184,54 +205,54 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
   </header>
 
   <section aria-labelledby="how-h">
-    <div class="shead"><h2 id="how-h">How to read it</h2></div>
+    <div class="shead"><h2 id="how-h" data-t="how">How to read it</h2></div>
     <div class="how">
       <div>
-        <h3>Severity follows the source</h3>
+        <h3 data-t="how-sev">Severity follows the source</h3>
         <dl class="key">
-          <dt><span class="tag n-must">MUST</span></dt><dd>A requirement (also SHALL, SHALL NOT). Breaking it is <b>critical</b>.</dd>
-          <dt><span class="tag n-should">SHOULD · Recommends</span></dt><dd>A recommendation. Breaking it is a <b>warning</b>, unless the rule explains otherwise.</dd>
-          <dt><span class="tag n-may">MAY · Defines · Adapted</span></dt><dd>An option, a definition with no requirement, or a requirement the audit adapts to a single file. Reported as <b>information</b>, or with a severity that is our own judgement and says so.</dd>
-          <dt><span class="tag n-prac">Practice · Service</span></dt><dd>Not a standard: industry practice, or the service's own profile.</dd>
+          <dt><span class="tag n-must">MUST</span></dt><dd data-t="key-must">A requirement (also SHALL, SHALL NOT). Breaking it is <b>critical</b>.</dd>
+          <dt><span class="tag n-should">SHOULD · Recommends</span></dt><dd data-t="key-should">A recommendation. Breaking it is a <b>warning</b>, unless the rule explains otherwise.</dd>
+          <dt><span class="tag n-may">MAY · Defines · Adapted</span></dt><dd data-t="key-may">An option, a definition with no requirement, or a requirement the audit adapts to a single file. Reported as <b>information</b>, or with a severity that is our own judgement and says so.</dd>
+          <dt><span class="tag n-prac">Practice · Service</span></dt><dd data-t="key-prac">Not a standard: industry practice, or the service's own profile.</dd>
         </dl>
       </div>
       <div>
-        <h3>How each citation was verified</h3>
+        <h3 data-t="how-ver">How each citation was verified</h3>
         <dl class="key">
-          <dt><span class="tag v-text">Checked</span></dt><dd>Read against the published text on 28 September 2026.</dd>
-          <dt><span class="tag v-unread">Not re-read</span></dt><dd>The source could not be downloaded here (ITU, ISO). The clause comes from the standard's known structure: please open it and confirm.</dd>
-          <dt><span class="tag v-practice">Practice</span></dt><dd>No standard to check against.</dd>
+          <dt><span class="tag v-text" data-t="tag-checked">Checked</span></dt><dd data-t="key-checked">Read against the published text on 28 September 2026.</dd>
+          <dt><span class="tag v-unread" data-t="tag-unread">Not re-read</span></dt><dd data-t="key-unread">The source could not be downloaded here (ITU, ISO). The clause comes from the standard's known structure: please open it and confirm.</dd>
+          <dt><span class="tag v-practice" data-t="tag-practice">Practice</span></dt><dd data-t="key-practice">No standard to check against.</dd>
         </dl>
       </div>
       <div class="hosted-only">
-        <h3>Reviewing</h3>
-        <p class="lede" style="font-size:14px">Open the source from the table below, find the item, and press <b>Confirm</b>, <b>Question</b> or <b>Disagree</b> on the rule. Add a note for anything to change. Each rule keeps the latest review, with who made it and when.</p>
+        <h3 data-t="how-rev">Reviewing</h3>
+        <p class="lede" style="font-size:14px" data-t="how-rev-text">Open the source from the table below, find the item, and press <b>Confirm</b>, <b>Question</b> or <b>Disagree</b> on the rule. Add a note for anything to change. Each rule keeps the latest review, with who made it and when.</p>
       </div>
     </div>
   </section>
 
   <section aria-labelledby="src-h">
-    <div class="shead"><h2 id="src-h">Sources</h2><p>Where each rule comes from. The links open the official documents.</p></div>
+    <div class="shead"><h2 id="src-h" data-t="sources">Sources</h2><p data-t="sources-text">Where each rule comes from. The links open the official documents.</p></div>
     <div class="tablewrap"><table>
-      <thead><tr><th scope="col">Source</th><th scope="col">Edition</th><th scope="col">Access</th><th scope="col">Rules</th><th scope="col">Verified</th><th scope="col">What was checked</th></tr></thead>
+      <thead><tr><th scope="col" data-t="th-source">Source</th><th scope="col" data-t="th-edition">Edition</th><th scope="col" data-t="th-access">Access</th><th scope="col" data-t="th-rules">Rules</th><th scope="col" data-t="th-verified">Verified</th><th scope="col" data-t="th-checked">What was checked</th></tr></thead>
       <tbody id="sources"></tbody>
     </table></div>
   </section>
 
   <section aria-labelledby="rules-h">
-    <div class="shead"><h2 id="rules-h">The rules</h2><p>Grouped by source. The large number is the item or clause cited; the small id is the name the rule has in audit reports.</p></div>
+    <div class="shead"><h2 id="rules-h" data-t="rules">The rules</h2><p data-t="rules-text">Grouped by source. The large number is the item or clause cited; the small id is the name the rule has in audit reports.</p></div>
     <form class="filters" id="filters" onsubmit="return false">
-      <label for="f-src">Source<select id="f-src"><option value="">All sources</option></select></label>
-      <label for="f-ver">Verified<select id="f-ver"><option value="">Any</option><option value="text">Checked against the text</option><option value="unread">Not re-read</option><option value="practice">Practice</option></select></label>
-      <label for="f-rev">Review<select id="f-rev"><option value="">Any</option><option value="none">Not reviewed</option><option value="confirmed">Confirmed</option><option value="question">Question</option><option value="disagree">Disagree</option></select></label>
-      <label for="f-q">Search<input id="f-q" type="search" placeholder="gop, audio, 7.4…" autocomplete="off"></label>
+      <label for="f-src"><span data-t="f-source">Source</span><select id="f-src"><option value="" data-t="f-all-sources">All sources</option></select></label>
+      <label for="f-ver"><span data-t="f-verified">Verified</span><select id="f-ver"><option value="" data-t="f-any">Any</option><option value="text" data-t="ver-text">Checked against the text</option><option value="unread" data-t="tag-unread">Not re-read</option><option value="practice" data-t="tag-practice">Practice</option></select></label>
+      <label for="f-rev"><span data-t="f-review">Review</span><select id="f-rev"><option value="" data-t="f-any">Any</option><option value="none" data-t="rv-none">Not reviewed</option><option value="confirmed" data-t="st-confirmed">Confirmed</option><option value="question" data-t="st-question">Question</option><option value="disagree" data-t="st-disagree">Disagree</option></select></label>
+      <label for="f-q"><span data-t="f-search">Search</span><input id="f-q" type="search" placeholder="gop, audio, 7.4…" data-t-ph="f-search-ph" autocomplete="off"></label>
       <span class="count" id="f-count"></span>
     </form>
     <div id="groups"></div>
   </section>
 
   <section aria-labelledby="gaps-h">
-    <div class="shead"><h2 id="gaps-h">Not audited yet</h2><p>Requirements the audit does not check today. Most concern playlists, captions and trick play, which are made elsewhere in the delivery chain rather than in the rendition files the audit reads. Some are readable from the files and are candidates for new rules.</p></div>
+    <div class="shead"><h2 id="gaps-h" data-t="gaps">Not audited yet</h2><p data-t="gaps-text">Requirements the audit does not check today. Most concern playlists, captions and trick play, which are made elsewhere in the delivery chain rather than in the rendition files the audit reads. Some are readable from the files and are candidates for new rules.</p></div>
     <div class="gaps" id="gaps"></div>
   </section>
 
@@ -257,82 +278,140 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
   };
   const SRC = Object.fromEntries(D.sources.map((s) => [s.key, s]));
   const normClass = (n) => /MUST|SHALL/.test(n) ? 'n-must' : /SHOULD|Recommends|Guidance/.test(n) ? 'n-should' : /Practice|Service/.test(n) ? 'n-prac' : 'n-may';
-  const SEV = { critical: 'Up to critical', warning: 'Up to warning', info: 'Information' };
-  const VER = { text: 'Checked against the text', unread: 'Not re-read', practice: 'Practice' };
-  const LABEL = { confirmed: 'Confirmed', question: 'Question', disagree: 'Disagree' };
+
+  // ---- language. English is the page as written; the Farsi comes from scripts/standards/notes.fa.mjs,
+  // which the build checks covers every key used here.
+  const EN = {
+    'f-rules': 'Rules', 'f-standards': 'Standards', 'ver-text': 'Checked against the text', 'tag-unread': 'Not re-read', 'f-practice': 'Practice, not a standard',
+    'tag-checked': 'Checked', 'tag-practice': 'Practice',
+    'sev-critical': 'Up to critical', 'sev-warning': 'Up to warning', 'sev-info': 'Information',
+    'st-confirmed': 'Confirmed', 'st-question': 'Question', 'st-disagree': 'Disagree', 'btn-confirm': 'Confirm',
+    'rv-none': 'Not reviewed', 'rv-note-only': 'Note only', 'rv-by': '{status} by {who}{date}', 'rv-someone': 'someone', 'rv-not-saved': 'Not saved: check your connection and try again.',
+    'note-ph': 'Note (optional): what to check or change', 'note-aria': 'Note on {title}',
+    'says-practice': 'The practice', 'says-source': 'The source says', 'says-check': 'The audit checks',
+    'cat-Container': 'container', 'cat-Video': 'video', 'cat-Colour': 'colour', 'cat-Audio': 'audio', 'cat-Decoding': 'decoding', 'cat-Ladder': 'ladder', 'cat-Delivery': 'delivery',
+    'group-meta': '{n} rules · {r} reviewed', 'group-meta-1': '1 rule · {r} reviewed',
+    'count': '{shown} of {n} rules shown',
+    'progress': '{c} confirmed · {q} with a question · {d} disagreed · {open} not reviewed yet, of {n} rules',
+    'progress-static': 'Reviews load when the page opens in Claude.', 'progress-none': 'Reviews are not available in this view.',
+    'ro-static': 'Reviews can be recorded when this page is opened in Claude.', 'ro-no-db': 'Reviews cannot be saved in this view.',
+    'ro-reader': 'You can read this register. To record reviews, ask its owner for Contributor access.',
+    'ro-stopped': 'Reviews stopped loading; reload the page to try again.', 'ro-denied': 'Your access does not allow saving reviews. Ask the owner for Contributor access.',
+    'foot': 'Built from the audit engine of Vidscope {version}; citations checked against the texts on {checked}. The rule list comes from the engine itself, so this register lists exactly what the audit runs. Requirements are summarised, not quoted; the sources are authoritative.',
+  };
+  const FA = D.fa.ui;
+  const statics = [...document.querySelectorAll('[data-t]')].map((n) => [n, n.innerHTML]);
+  const placeholders = [...document.querySelectorAll('[data-t-ph]')].map((n) => [n, n.placeholder]);
+  let lang = 'en';
+  const fa = () => lang === 'fa';
+  const T = (k, vars = {}) => String((fa() && FA[k] != null ? FA[k] : EN[k]) ?? k).replace(/\{(\w+)\}/g, (_, v) => vars[v] ?? '');
+  const req = (r) => (fa() ? r.fa.req : r.req);
+  const chk = (r) => (fa() ? r.fa.check : r.check);
+  const srcText = (s, k) => (fa() ? s.fa[k] : s[k]);
 
   // ---- masthead facts
-  const nText = D.rules.filter((r) => SRC[r.spec].checked === 'text').length;
-  const nUnread = D.rules.filter((r) => SRC[r.spec].checked === 'unread').length;
-  const nPrac = D.rules.filter((r) => SRC[r.spec].checked === 'practice').length;
-  const standards = D.sources.filter((s) => s.key !== 'practice').length;
-  for (const [k, v] of [['Rules', D.rules.length], ['Standards', standards], ['Checked against the text', nText], ['Not re-read', nUnread], ['Practice, not a standard', nPrac]]) $('facts').append(el('div', null, el('dt', { text: k }), el('dd', { class: 'num', text: String(v) })));
+  function paintFacts() {
+    const n = (v) => D.rules.filter((r) => SRC[r.spec].checked === v).length;
+    const standards = D.sources.filter((s) => s.key !== 'practice').length;
+    $('facts').replaceChildren(...[['f-rules', D.rules.length], ['f-standards', standards], ['ver-text', n('text')], ['tag-unread', n('unread')], ['f-practice', n('practice')]]
+      .map(([k, v]) => el('div', null, el('dt', { text: T(k) }), el('dd', { class: 'num', text: String(v) }))));
+  }
 
   // ---- sources
+  const srcCells = [];
   for (const s of D.sources) {
+    const cells = { edition: el('td'), access: el('td'), tag: el('span', { class: `tag v-${s.checked}` }), note: el('td', { class: 'note' }) };
+    srcCells.push([s, cells]);
     $('sources').append(el('tr', null,
-      el('td', null, el('a', { href: s.url, target: '_blank', rel: 'noopener', class: 'src', text: s.short }), el('div', { class: 'clause', text: s.name })),
-      el('td', { text: s.edition }),
-      el('td', { text: s.access }),
+      el('td', null, el('a', { href: s.url, target: '_blank', rel: 'noopener', class: 'src', text: s.short }), el('div', { class: 'clause', lang: 'en', text: s.name })),
+      cells.edition, cells.access,
       el('td', { class: 'num', text: String(s.count) }),
-      el('td', null, el('span', { class: `tag v-${s.checked}`, text: s.checked === 'text' ? 'Checked' : VER[s.checked] })),
-      el('td', { class: 'note', text: s.note })));
+      el('td', null, cells.tag),
+      cells.note));
     $('f-src').append(el('option', { value: s.key, text: s.short }));
+  }
+  function paintSources() {
+    for (const [s, c] of srcCells) {
+      c.edition.textContent = srcText(s, 'edition');
+      c.access.textContent = srcText(s, 'access');
+      c.note.textContent = srcText(s, 'note');
+      c.tag.textContent = T(s.checked === 'text' ? 'tag-checked' : s.checked === 'unread' ? 'tag-unread' : 'tag-practice');
+    }
   }
 
   // ---- rules
-  const rows = new Map(); // id -> { art, rule, ui }
+  const rows = new Map(); // id -> { art, rule, ui, group }
+  const groups = [];
   for (const s of D.sources) {
     const list = D.rules.filter((r) => r.spec === s.key);
     const meta = el('span', { class: 'gmeta' });
     const group = el('div', { class: 'group', 'data-src': s.key },
-      el('div', { class: 'ghead' }, el('h3', { text: s.short }), el('a', { href: s.url, target: '_blank', rel: 'noopener', class: 'gmeta', text: s.name }), meta));
+      el('div', { class: 'ghead' }, el('h3', { text: s.short }), el('a', { href: s.url, target: '_blank', rel: 'noopener', class: 'gmeta clause', lang: 'en', text: s.name }), meta));
     group._meta = meta;
+    groups.push(group);
     for (const r of list) {
       const ui = {};
-      ui.btns = ['confirmed', 'question', 'disagree'].map((st) => el('button', { type: 'button', class: `rv-btn ${st === 'confirmed' ? 'b-ok' : st === 'question' ? 'b-q' : 'b-no'}`, 'aria-pressed': 'false', 'data-st': st, text: st === 'confirmed' ? 'Confirm' : LABEL[st] }));
-      ui.meta = el('span', { class: 'rv-meta', text: 'Not reviewed' });
-      ui.note = el('textarea', { id: `note-${r.id}`, rows: '1', placeholder: 'Note (optional): what to check or change', 'aria-label': `Note on ${r.title}` });
+      ui.btns = ['confirmed', 'question', 'disagree'].map((st) => el('button', { type: 'button', class: `rv-btn ${st === 'confirmed' ? 'b-ok' : st === 'question' ? 'b-q' : 'b-no'}`, 'aria-pressed': 'false', 'data-st': st }));
+      ui.meta = el('span', { class: 'rv-meta' });
+      ui.note = el('textarea', { id: `note-${r.id}`, rows: '1' });
       ui.box = el('div', { class: 'review' }, el('div', { class: 'rv-row' }, ui.btns, ui.meta), ui.note);
+      ui.cat = el('small');
+      ui.sev = el('span', { class: `tag s-${r.severity}` });
+      ui.ver = el('span', { class: `tag v-${SRC[r.spec].checked}` });
+      ui.saysDt = el('dt');
+      ui.saysDd = el('dd');
+      ui.checkDt = el('dt');
+      ui.checkDd = el('dd');
       const art = el('article', { class: 'rule', id: `r-${r.id}` },
-        el('div', { class: r.cite.length > 8 ? 'cite long' : 'cite' }, r.cite, el('small', { text: r.scope === 'ladder' ? 'ladder' : r.category.toLowerCase() })),
+        el('div', { class: r.cite.length > 8 ? 'cite long' : 'cite' }, r.cite, ui.cat),
         el('div', { class: 'rbody' },
-          el('div', { class: 'rtop' }, el('h3', { text: r.title }), el('span', { class: 'rid', text: r.id })),
-          el('p', { class: 'clause', text: r.clause }),
-          el('div', { class: 'tags' },
-            el('span', { class: `tag ${normClass(r.norm)}`, text: r.norm }),
-            el('span', { class: `tag s-${r.severity}`, text: SEV[r.severity] }),
-            el('span', { class: `tag v-${SRC[r.spec].checked}`, text: VER[SRC[r.spec].checked] })),
-          el('dl', { class: 'says' },
-            el('div', null, el('dt', { text: r.spec === 'practice' ? 'The practice' : 'The source says' }), el('dd', { text: r.req })),
-            el('div', null, el('dt', { text: 'The audit checks' }), el('dd', { text: r.check }))),
+          el('div', { class: 'rtop' }, el('h3', { lang: 'en', text: r.title }), el('span', { class: 'rid', text: r.id })),
+          el('p', { class: 'clause', lang: 'en', text: r.clause }),
+          el('div', { class: 'tags' }, el('span', { class: `tag ${normClass(r.norm)}`, text: r.norm }), ui.sev, ui.ver),
+          el('dl', { class: 'says' }, el('div', null, ui.saysDt, ui.saysDd), el('div', null, ui.checkDt, ui.checkDd)),
           ui.box));
       rows.set(r.id, { art, rule: r, ui, group });
       group.append(art);
     }
     $('groups').append(group);
   }
+  function paintRuleText() {
+    for (const { rule: r, ui } of rows.values()) {
+      ui.cat.textContent = T(`cat-${r.scope === 'ladder' ? 'Ladder' : r.category}`);
+      ui.sev.textContent = T(`sev-${r.severity}`);
+      const v = SRC[r.spec].checked;
+      ui.ver.textContent = T(v === 'text' ? 'ver-text' : v === 'unread' ? 'tag-unread' : 'tag-practice');
+      ui.saysDt.textContent = T(r.spec === 'practice' ? 'says-practice' : 'says-source');
+      ui.saysDd.textContent = req(r);
+      ui.checkDt.textContent = T('says-check');
+      ui.checkDd.textContent = chk(r);
+      for (const b of ui.btns) b.textContent = T(b.dataset.st === 'confirmed' ? 'btn-confirm' : `st-${b.dataset.st}`);
+      ui.note.placeholder = T('note-ph');
+      ui.note.setAttribute('aria-label', T('note-aria', { title: r.title }));
+    }
+  }
 
   // ---- gaps
-  for (const g of D.gaps) {
-    $('gaps').append(el('div', { class: 'gap' }, el('h3', { text: g.area }), el('ul', null, g.items.map(([item, norm, what, why]) =>
-      el('li', null, el('span', { class: 'gi', text: item }), el('span', null, norm !== '—' ? el('span', { class: `tag ${normClass(norm)}`, text: norm }) : null, el('div', { text: what })), el('span', { class: 'gw', text: why }))))));
+  function paintGaps() {
+    $('gaps').replaceChildren(...D.gaps.map((g) => el('div', { class: 'gap' }, el('h3', { text: fa() ? g.fa.area : g.area }), el('ul', null, g.items.map(([item, norm, what, why], i) =>
+      el('li', null, el('span', { class: 'gi', text: item }), el('span', null, norm !== '—' ? el('span', { class: `tag ${normClass(norm)}`, text: norm }) : null, el('div', { text: fa() ? g.fa.items[i][0] : what })), el('span', { class: 'gw', text: fa() ? g.fa.items[i][1] : why })))))));
   }
-  $('foot').textContent = `Built from the audit engine of Vidscope ${D.version}; citations checked against the texts on ${D.checked}. The rule list comes from the engine itself, so this register lists exactly what the audit runs. Requirements are summarised, not quoted; the sources are authoritative.`;
 
   // ---- review state
   let reviews = {};
   let people = {};
   let canWrite = true;
-  const fmtDate = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return ''; } };
+  let readOnly = null; // the key of the message shown when reviews cannot be saved
+  let progressNote = 'progress-static';
+  const fmtDate = (iso) => { try { return new Date(iso).toLocaleDateString(fa() ? 'fa-IR-u-ca-gregory-nu-latn' : undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return ''; } };
   function paintRow(id) {
     const { ui } = rows.get(id);
     const rv = reviews[id];
     for (const b of ui.btns) b.setAttribute('aria-pressed', String(!!rv && rv.status === b.dataset.st));
     if (rv && rv.status) {
-      const who = (rv.by && people[rv.by] && people[rv.by].name) || 'someone';
-      ui.meta.textContent = `${LABEL[rv.status]} by ${who}${rv.at ? ` · ${fmtDate(rv.at)}` : ''}`;
-    } else ui.meta.textContent = rv && rv.note ? 'Note only' : 'Not reviewed';
+      const who = (rv.by && people[rv.by] && people[rv.by].name) || T('rv-someone');
+      ui.meta.textContent = T('rv-by', { status: T(`st-${rv.status}`), who, date: rv.at ? ` · ${fmtDate(rv.at)}` : '' });
+    } else ui.meta.textContent = T(rv && rv.note ? 'rv-note-only' : 'rv-none');
     if (document.activeElement !== ui.note) ui.note.value = (rv && rv.note) || '';
   }
   function paintProgress() {
@@ -345,8 +424,9 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
       el('span', { class: 'b-q', style: `width:${(c.question / n) * 100}%` }),
       el('span', { class: 'b-no', style: `width:${(c.disagree / n) * 100}%` }));
     const open = n - c.confirmed - c.question - c.disagree;
-    $('progress-text').textContent = `${c.confirmed} confirmed · ${c.question} with a question · ${c.disagree} disagreed · ${open} not reviewed yet, of ${n} rules`;
-    bar.setAttribute('aria-label', $('progress-text').textContent);
+    const text = T('progress', { c: c.confirmed, q: c.question, d: c.disagree, open, n });
+    $('progress-text').textContent = progressNote ? T(progressNote) : text;
+    bar.setAttribute('aria-label', text);
   }
   function paintAll() { for (const id of rows.keys()) paintRow(id); paintProgress(); applyFilters(); }
 
@@ -357,7 +437,7 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
     const perGroup = new Map();
     for (const { art, rule, group } of rows.values()) {
       const st = reviews[rule.id]?.status || 'none';
-      const hay = `${rule.id} ${rule.title} ${rule.clause} ${rule.req} ${rule.check} ${rule.cite}`.toLowerCase();
+      const hay = `${rule.id} ${rule.title} ${rule.clause} ${rule.req} ${rule.check} ${rule.fa.req} ${rule.fa.check} ${rule.cite}`.toLowerCase();
       const ok = (!src || rule.spec === src) && (!ver || SRC[rule.spec].checked === ver) && (!rev || st === rev) && (!q || hay.includes(q));
       art.hidden = !ok;
       if (ok) shown++;
@@ -367,33 +447,62 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
     }
     for (const [group, g] of perGroup) {
       group.hidden = g.shown === 0;
-      group._meta.textContent = `${g.total} ${g.total === 1 ? 'rule' : 'rules'} · ${g.reviewed} reviewed`;
+      group._meta.textContent = T(g.total === 1 ? 'group-meta-1' : 'group-meta', { n: g.total, r: g.reviewed });
     }
-    $('f-count').textContent = `${shown} of ${D.rules.length} rules shown`;
+    $('f-count').textContent = T('count', { shown, n: D.rules.length });
   }
   for (const id of ['f-src', 'f-ver', 'f-rev']) $(id).addEventListener('change', applyFilters);
   $('f-q').addEventListener('input', applyFilters);
 
-  function setReadOnly(message) {
+  function setReadOnly(key) {
     canWrite = false;
+    readOnly = key;
     for (const { ui } of rows.values()) {
       for (const b of ui.btns) b.disabled = true;
       ui.note.readOnly = true;
-      if (!ui.box.querySelector('.ro')) ui.box.append(el('p', { class: 'ro', text: message }));
+      if (!ui.box.querySelector('.ro')) ui.box.append(el('p', { class: 'ro' }));
+      ui.box.querySelector('.ro').textContent = T(key);
     }
   }
 
-  paintAll();
-  $('progress-text').textContent = 'Reviews load when the page opens in Claude.';
+  function setLang(next) {
+    lang = next === 'fa' ? 'fa' : 'en';
+    try { localStorage.setItem('vidscope-standards-lang', lang); } catch { /* a convenience only */ }
+    const root = document.documentElement;
+    root.lang = lang;
+    root.dir = fa() ? 'rtl' : 'ltr';
+    for (const b of document.querySelectorAll('.lang button')) b.setAttribute('aria-pressed', String(b.dataset.lang === lang));
+    for (const [n, html] of statics) n.innerHTML = fa() ? FA[n.dataset.t] : html;
+    for (const [n, ph] of placeholders) n.placeholder = fa() ? FA[n.dataset.tPh] : ph;
+    document.title = $('rules-h').closest('.wrap').querySelector('h1').textContent;
+    $('foot').textContent = T('foot', { version: D.version, checked: fa() ? D.fa.checked : D.checked });
+    paintFacts();
+    paintSources();
+    paintRuleText();
+    paintGaps();
+    if (readOnly) setReadOnly(readOnly);
+    paintAll();
+  }
+  for (const b of document.querySelectorAll('.lang button')) b.addEventListener('click', () => setLang(b.dataset.lang));
+
+  // ?lang=fa or #fa in a link, then the reader's last choice, then the browser's language.
+  let start = 'en';
+  try {
+    const asked = new URLSearchParams(location.search).get('lang') || (location.hash === '#fa' ? 'fa' : location.hash === '#en' ? 'en' : null);
+    let saved = null;
+    try { saved = localStorage.getItem('vidscope-standards-lang'); } catch { /* none */ }
+    start = asked || saved || (/^fa\b/i.test(navigator.language || '') ? 'fa' : 'en');
+  } catch { /* English */ }
+  setLang(start);
 
   (async () => {
     const claude = window.claude;
-    if (!claude || typeof claude.use !== 'function') { setReadOnly('Reviews can be recorded when this page is opened in Claude.'); return; }
+    if (!claude || typeof claude.use !== 'function') { setReadOnly('ro-static'); return; }
     const [db, user] = await Promise.all([claude.use('db'), claude.use('user')]);
-    if (!db) { setReadOnly('Reviews cannot be saved in this view.'); $('progress-text').textContent = 'Reviews are not available in this view.'; return; }
+    if (!db) { setReadOnly('ro-no-db'); progressNote = 'progress-none'; paintProgress(); return; }
     const me = user ? await user.me() : { id: null };
     const may = user ? await user.can('data.write') : null;
-    if (may === false) setReadOnly('You can read this register. To record reviews, ask its owner for Contributor access.');
+    if (may === false) setReadOnly('ro-reader');
 
     const resolve = async () => {
       if (!user) return;
@@ -404,9 +513,10 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
       const next = {};
       for (const d of snap.docs) if (d.exists) next[d.id] = d.data();
       reviews = next;
+      progressNote = null;
       await resolve();
       paintAll();
-    }, () => { setReadOnly('Reviews stopped loading; reload the page to try again.'); });
+    }, () => { setReadOnly('ro-stopped'); });
 
     // One write at a time per rule.
     const chains = new Map();
@@ -417,8 +527,8 @@ footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--lin
       paintRow(id); paintProgress(); applyFilters();
       const prev = chains.get(id) || Promise.resolve();
       const run = prev.then(() => db.doc(`reviews/${id}`).set(body)).catch((e) => {
-        if (e && e.code === 'invalid_argument') setReadOnly('Your access does not allow saving reviews. Ask the owner for Contributor access.');
-        else rows.get(id).ui.meta.textContent = 'Not saved: check your connection and try again.';
+        if (e && e.code === 'invalid_argument') setReadOnly('ro-denied');
+        else rows.get(id).ui.meta.textContent = T('rv-not-saved');
       });
       chains.set(id, run);
     };

@@ -41,6 +41,9 @@ no build step: `web/` is the whole application, `bin/vidscope.js` a small local 
 - Audit rules cite the current item or clause of their source and take their severity from
   it (MUST → critical, SHOULD → warning); practice is labelled `spec: 'practice'`. See the
   `writing-audit-rules` skill.
+- The standards register (`web/standards.html`) is generated: edit `scripts/standards/`, then
+  run `node scripts/standards/build.mjs`. Its notes exist in English and Farsi; changing an
+  English note means updating its Farsi too (the build says which).
 
 ## Commits and pull requests
 
