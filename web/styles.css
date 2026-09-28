@@ -400,7 +400,7 @@ code, .mono { font-family: var(--mono); }
   flex: none;
   background: var(--bg-1);
 }
-.btn {
+.btn, a.btn {
   white-space: nowrap;
   border: 1px solid var(--line-2);
   background: var(--bg-2);
@@ -1208,3 +1208,6 @@ details.cna { margin: 4px 0 10px; }
 .rptable th { text-align: left; font-weight: 500; color: var(--text-3); font-size: 11.5px; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
 .rptable td { padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .rptable .bad { color: var(--bad); }
+
+a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+a.btn:hover { color: var(--text); border-color: var(--text-3); }

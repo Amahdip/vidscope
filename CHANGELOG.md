@@ -13,6 +13,7 @@ Each entry links to the pull request with the details.
   and a few segments opened, against BANDWIDTH (the peak segment bit rate), AVERAGE-BANDWIDTH,
   CODECS, RESOLUTION, FRAME-RATE, target durations, alignment, key frames, I-frame playlists and
   versions ([#29](https://github.com/Amahdip/vidscope/pull/29)).
+- A standards register at `standards.html`: every rule, the standard and item it cites, and what it checks, linked from the Audit tab and the conversion check page ([#31](https://github.com/Amahdip/vidscope/pull/31)).
 - The logo in the top bar goes back to the start page ([#28](https://github.com/Amahdip/vidscope/pull/28)).
 - A README with the logo, animated demos of the anatomy, Frames, Compare and Audit views,
   and badges; the images are recorded by `scripts/capture/` ([#27](https://github.com/Amahdip/vidscope/pull/27)).
