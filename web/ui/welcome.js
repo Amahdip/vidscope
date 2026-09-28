@@ -10,7 +10,7 @@ export class Welcome {
     this.el = el;
     this.app = app;
     app.store.subscribe((s, ch) => {
-      if (['files', 'doc', 'error', 'loading', 'server', 'lastCompare'].some((k) => ch.has(k))) this.render();
+      if (['files', 'doc', 'error', 'loading', 'server', 'lastCompare', 'auditServer', 'lastReport'].some((k) => ch.has(k))) this.render();
     });
     this.render();
   }
@@ -35,6 +35,18 @@ export class Welcome {
       zone,
       h('div', { class: 'formats' }, FORMATS.map((f) => h('span', { class: 'chip' }, f))));
     if (s.error) box.append(h('div', { class: 'err' }, s.error));
+    if (s.auditServer) {
+      // An audit server next to the app: a converted video by its id or URL, straight from the storage.
+      const input = h('input', { class: 'rpq', type: 'search', placeholder: 'video id, rendition URL or flv_name', 'aria-label': 'Video id, rendition URL or flv_name', spellcheck: 'false', autocomplete: 'off' });
+      box.append(h('form', { class: 'wcheck', onsubmit: (e) => {
+        e.preventDefault();
+        const q = input.value.trim();
+        if (q) this.app.showReport(q);
+      } },
+      h('div', { class: 'wch' }, h('b', null, 'Check a conversion'), h('span', null, 'the whole ladder of a converted video, audited against the standards and the service\'s contract')),
+      h('div', { class: 'wcrow' }, input, h('button', { class: 'btn primary', type: 'submit' }, 'Check')),
+      s.lastReport ? h('button', { class: 'btn link', type: 'button', onclick: () => this.app.backToReport() }, `Back to the check of ${s.lastReport.query}`) : null));
+    }
     box.append(h('div', { class: 'wcompare' },
       h('button', { class: 'btn', onclick: () => this.app.pickCompare(), 'data-tip': 'Put a source video next to the versions converted from it (720p, 480p...): what each conversion changed, the bitrate ladder, key frame alignment, and the frame each version shows at any moment.' }, 'Compare versions of a video…'),
       s.lastCompare ? h('button', { class: 'btn', onclick: () => this.app.backToCompare() }, `Back to the comparison (${s.lastCompare.keys.length} files)`) : null,

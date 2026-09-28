@@ -16,7 +16,7 @@ export class Topbar {
     this.menu = null;
     this.build();
     app.store.subscribe((s, ch) => {
-      if (['files', 'current', 'doc', 'mode', 'theme', 'loading', 'server', 'docVersion', 'samplesReady', 'compare', 'lastCompare'].some((k) => ch.has(k))) this.render();
+      if (['files', 'current', 'doc', 'mode', 'theme', 'loading', 'server', 'docVersion', 'samplesReady', 'compare', 'lastCompare', 'report', 'lastReport', 'auditServer'].some((k) => ch.has(k))) this.render();
     });
     this.render();
   }
@@ -73,10 +73,15 @@ export class Topbar {
   render() {
     const s = this.app.store.get();
     const doc = s.doc;
-    this.anatomy.textContent = s.compare ? 'comparing versions' : doc ? doc.summary.anatomy : 'video file anatomy';
-    this.fileName.textContent = s.compare ? `${s.compare.keys.length} files compared` : s.current ? s.current.name : s.files.length ? 'choose a file' : 'open a file';
+    const reporting = s.report && !s.compare;
+    this.anatomy.textContent = s.compare ? 'comparing versions' : reporting ? 'conversion check' : doc ? doc.summary.anatomy : 'video file anatomy';
+    this.fileName.textContent = s.compare ? `${s.compare.keys.length} files compared` : reporting ? (s.report.query || 'check a conversion') : s.current ? s.current.name : s.files.length ? 'choose a file' : 'open a file';
     clear(this.summary);
-    if (s.compare) {
+    if (reporting) {
+      const d = s.report.data;
+      if (d) this.summary.append(`${d.video?.title ?? d.label} · ${d.renditions.length} renditions`);
+      else if (s.report.status === 'loading') this.summary.append('checking…');
+    } else if (s.compare) {
       const ref = s.files.find((f) => f.key === s.compare.ref);
       if (ref) this.summary.append(`reference: ${ref.name}`);
     } else if (doc) {
@@ -96,7 +101,7 @@ export class Topbar {
     for (const b of this.modeButtons) b.setAttribute('aria-pressed', String(b.dataset.mode === s.mode));
     this.themeBtn.replaceChildren(icon(this.isDark() ? 'sun' : 'moon'));
     this.themeBtn.title = this.isDark() ? 'Switch to the light theme' : 'Switch to the dark theme';
-    this.goto.disabled = !doc || !!s.compare;
+    this.goto.disabled = !doc || !!s.compare || !!reporting;
     if (this.menu) this.renderMenu();
   }
 
@@ -143,6 +148,8 @@ export class Topbar {
     const action = (label, side, fn) => h('div', { class: 'item action', role: 'menuitem', onclick: () => { this.closeMenu(); fn(); } },
       h('span', { class: 'n' }, label), h('span', { class: 's' }, side));
     const actions = [action('Open a file from this computer…', 'local', () => document.getElementById('filepick').click())];
+    if (s.auditServer) actions.push(action('Check a conversion…', 'id or URL', () => this.app.showReport()));
+    if (s.lastReport && !s.report) actions.push(action(`Back to the check of ${s.lastReport.query}`, '', () => this.app.backToReport()));
     if (s.compare) actions.push(action('Close the comparison', '', () => this.app.closeCompare()));
     else if (s.lastCompare) actions.push(action(`Back to the comparison (${s.lastCompare.keys.length} files)`, '', () => this.app.backToCompare()));
     actions.push(action(s.compare ? 'Change the compared files…' : 'Compare versions of a video…', 'side by side', () => this.app.pickCompare()));
