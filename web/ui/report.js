@@ -88,7 +88,8 @@ export class ReportView {
     const report = d.report;
     const results = report.files.map((f) => ({ ...f, checks: f.checks ?? [] }));
     const ladders = report.ladders ?? [];
-    const all = [...results.flatMap((r) => r.checks), ...ladders.flatMap((l) => l.checks)];
+    const playlists = report.playlists ?? [];
+    const all = [...results.flatMap((r) => r.checks), ...ladders.flatMap((l) => l.checks), ...playlists.flatMap((p) => p.checks)];
 
     // Who: the video, where it came from, how long the check took.
     const v = d.video ?? {};
@@ -144,6 +145,7 @@ export class ReportView {
     if (ladders.length) {
       body.append(h('div', { class: 'cmpsec' }, h('div', { class: 'cmpsh' }, h('h4', null, 'Across the renditions')), checkList(ladders.flatMap((l) => l.checks))));
     }
+    for (const p of playlists) body.append(this.delivery(p));
     const per = h('div', { class: 'cmpsec' }, h('div', { class: 'cmpsh' }, h('h4', null, 'Each rendition')));
     for (const r of results) {
       const n = counts(r.checks);
@@ -164,5 +166,36 @@ export class ReportView {
       body.append(h('p', { class: 'prose rpnote' }, `The audit server read ${plural(results.length, 'rendition')}: each index in full and ${results.some((r) => r.facts?.payload) ? 'whole GOPs spread over each file' : 'all of their frames'}. Loudness, sync and fidelity to the source need a decode; they run in the scheduled audits with --measure.`));
     }
     return body;
+  }
+
+  /** The HLS presentation: what the multivariant playlist declares per variant against what was measured, and its checks. */
+  delivery(p) {
+    const rate = (x) => (x == null ? '—' : fmtBitrate(x));
+    const delta = (m, d) => {
+      if (m == null || d == null) return null;
+      const off = m / d - 1;
+      return h('span', { class: Math.abs(off) > 0.1 ? 'bad' : 'dim' }, ` ${off >= 0 ? '+' : '−'}${fmtNum(Math.abs(off) * 100, 1)} %`);
+    };
+    const rows = (p.facts?.variants ?? []).filter((v) => v.role === 'variant');
+    const table = h('div', { class: 'rptablewrap' }, h('table', { class: 'rptable' },
+      h('thead', null, h('tr', null, ['Variant', 'BANDWIDTH', 'measured peak', 'AVERAGE-BANDWIDTH', 'measured average', 'resolution', 'frame rate', 'segments'].map((t) => h('th', null, t)))),
+      h('tbody', null, rows.map((v) => {
+        const d = v.declared ?? {};
+        const m = v.measured ?? {};
+        return h('tr', null,
+          h('td', null, h('b', null, v.label)),
+          h('td', null, rate(d.bandwidth)),
+          h('td', null, rate(m.peak), delta(m.peak, d.bandwidth), m.sampled ? h('span', { class: 'dim' }, ' (sampled)') : null),
+          h('td', null, rate(d.averageBandwidth)),
+          h('td', null, rate(m.average), delta(m.average, d.averageBandwidth)),
+          h('td', null, d.resolution ? `${d.resolution.width}×${d.resolution.height}` : '—', m.video?.width && d.resolution && (m.video.width !== d.resolution.width || m.video.height !== d.resolution.height) ? h('span', { class: 'bad' }, ` (is ${m.video.width}×${m.video.height})`) : null),
+          h('td', null, d.frameRate != null ? fmtNum(d.frameRate, 3) : '—'),
+          h('td', null, `${fmtInt(m.segments)} × ${m.targetDuration ?? '?'} s`));
+      }))));
+    return h('div', { class: 'cmpsec' },
+      h('div', { class: 'cmpsh' }, h('h4', { 'data-tip': 'The HLS presentation players receive: the multivariant playlist, every media playlist, the size of every segment, and a few segments opened to see what they hold.' }, 'Delivery (HLS)'),
+        h('span', { class: 'dim' }, `${p.facts?.url ?? ''} · ${fmtInt(p.facts?.requests ?? 0)} requests`)),
+      table,
+      checkList(p.checks));
   }
 }

@@ -407,7 +407,7 @@ test('what the audit could not check is listed, and the pass rate counts every v
   assert.equal(t.skip, 1);
 });
 
-test('a playlist is refused as outside the audit, not failed as a file without video', async () => {
+test('a playlist is not failed as a file without video: the CLI audits HLS and refuses DASH', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vidscope-audit-'));
   const file = path.join(dir, 'master.m3u8');
   fs.writeFileSync(file, '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=191049,RESOLUTION=592x320\nv360.m3u8\n');
@@ -418,9 +418,15 @@ test('a playlist is refused as outside the audit, not failed as a file without v
     assert.match(r.checks[0].title, /Not audited: HLS playlist/);
     assert.equal(tally(r.checks).critical, 0, 'no "No video track" critical finding');
     const out = await auditInputs({ inputs: [file], headers: {}, expect: {}, ladder: false, budget: null, measure: false }, () => {});
-    assert.equal(out.results[0].reason, 'unsupported');
-    assert.match(out.results[0].error, /playlists and manifests are not audited yet/);
-    assert.equal(toReport(out, { expect: {} }).summary.errors, 1, 'the CLI exits 3: an input could not be audited');
+    assert.equal(out.results.length, 0);
+    assert.equal(out.playlists.length, 1, 'an HLS playlist is audited as a presentation');
+    assert.match(out.playlists[0].checks.find((c) => c.id === 'hls-reachable').title, /320p: the playlist could not be read/);
+    const mpd = path.join(dir, 'manifest.mpd');
+    fs.writeFileSync(mpd, '<?xml version="1.0"?>\n<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static"></MPD>\n');
+    const dash = await auditInputs({ inputs: [mpd], headers: {}, expect: {}, ladder: false, budget: null, measure: false }, () => {});
+    assert.equal(dash.results[0].reason, 'unsupported');
+    assert.match(dash.results[0].error, /DASH manifests are not audited yet/);
+    assert.equal(toReport(dash, { expect: {} }).summary.errors, 1, 'the CLI exits 3: an input could not be audited');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

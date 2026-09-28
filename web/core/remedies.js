@@ -131,6 +131,40 @@ export const REMEDIES = {
   'same-audio': { cause: 'Different audio bit rates or channel counts per video rendition.', fix: 'One audio encode shared by every rendition (or a separate audio rendition group in the playlist).' },
   'bitrate-steps': { cause: 'CRF per rendition without a target, so bitrates land wherever the content takes them.', fix: 'Capped CRF with per-rendition -maxrate to shape the ladder into 1.5–2× steps.' },
   'label-matches-size': { cause: 'The ladder logic keeps the source size on a rung named after a smaller constraint.', fix: 'Name renditions after their actual height (or width for portrait), after scaling.' },
+  'hls-reachable': {
+    cause: 'Segments removed or not yet written, a packager or origin error, or signed URLs that expire before the playlist does.',
+    fix: 'Check the origin and CDN logs for the failing URIs; keep every segment a published playlist lists available, and give signed links a lifetime longer than the playlist\'s.',
+  },
+  'hls-bandwidth': {
+    cause: 'BANDWIDTH written from a file\'s average or nominal bit rate, or from video alone without audio and container overhead.',
+    fix: 'Compute it from the packaged segments: the largest bit rate of any run of segments lasting 0.5 to 1.5 target durations, audio renditions included (FFmpeg\'s HLS muxer does this with -master_pl_name; Apple\'s mediastreamvalidator reports the measured peak).',
+  },
+  'hls-average-bandwidth': {
+    cause: 'The multivariant playlist is written without AVERAGE-BANDWIDTH, or with a value that is not measured.',
+    fix: 'Write AVERAGE-BANDWIDTH as the total segment bits divided by the playlist\'s duration (FFmpeg\'s -master_pl_name writes it).',
+  },
+  'hls-codecs': {
+    cause: 'CODECS written from a fixed table instead of from the stream, or left out.',
+    fix: 'Derive it from each rendition\'s configuration (avcC/hvcC bytes: ffprobe -show_streams gives profile and level) and list every format the variant\'s segments carry, audio included.',
+  },
+  'hls-resolution': { cause: 'RESOLUTION left out, or taken from the rendition\'s name instead of its pictures.', fix: 'Write RESOLUTION=<width>x<height> from the encoded pictures of each variant.' },
+  'hls-frame-rate': { cause: 'The playlist writer does not know the frame rate (FFmpeg\'s HLS muxer omits it).', fix: 'Add FRAME-RATE=<fps, three decimals> to every video variant, from the stream.' },
+  'hls-segment-durations': {
+    cause: 'Key frames further apart than the segment length, so the packager has to wait for the next one; or TARGETDURATION set from the requested length rather than the longest segment.',
+    fix: 'Encode with a GOP that divides the segment length (-g, -keyint_min, -sc_threshold 0) and set TARGETDURATION to the longest EXTINF rounded to the nearest integer.',
+  },
+  'hls-target-duration': { cause: 'A segment length other than Apple\'s 6 s.', fix: '-hls_time 6 with a 2 s GOP (or a GOP that divides 6 s).' },
+  'hls-same-target': { cause: 'Variants packaged separately with different segment lengths or GOPs.', fix: 'Package every variant with the same -hls_time and the same key-frame interval.' },
+  'hls-aligned': { cause: 'Renditions encoded separately, or with scene-cut key frames, so their segment boundaries differ.', fix: 'Encode every rendition from one decode with the same -g/-keyint_min/-sc_threshold 0, and package them with the same segment length.' },
+  'hls-same-duration': { cause: 'Renditions cut from differently trimmed sources, or an audio track longer than the video.', fix: 'Encode every rendition from the same trimmed source (-t on the input), and trim audio to the video.' },
+  'hls-playlist-type': { cause: 'The VOD playlist is written without its type.', fix: '-hls_playlist_type vod (or add #EXT-X-PLAYLIST-TYPE:VOD).' },
+  'hls-iframes': {
+    cause: 'The packager writes no I-frame playlists.',
+    fix: 'Generate I-frame playlists (EXT-X-I-FRAME-STREAM-INF) with the packager, ideally dense ones at one frame per second (Apple 6.2); most packagers, Apple\'s mediafilesegmenter among them, can write them.',
+  },
+  'hls-starts-idr': { cause: 'Segments cut where there is no key frame, or key frames that are not IDRs (open GOP, recovery points).', fix: 'Force key frames at every segment start: -g N -keyint_min N -sc_threshold 0 with N dividing the segment length, and no open GOP.' },
+  'hls-independent': { cause: 'The multivariant playlist does not say that segments start with an IDR.', fix: '-hls_flags independent_segments (or add #EXT-X-INDEPENDENT-SEGMENTS to the multivariant playlist).' },
+  'hls-version': { cause: 'EXT-X-VERSION written as a constant, not from the tags the playlist uses.', fix: 'Declare the lowest version that covers the tags (3 for decimal EXTINF, 4 for BYTERANGE, 6 for EXT-X-MAP), and drop PROGRAM-ID from version 6 on.' },
 };
 
 /** The remedy for a rule, if any. */

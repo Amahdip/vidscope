@@ -7,7 +7,7 @@ import { fmtNum, fmtInt, fmtBitrate, fmtDuration, hex, plural } from '../core/ut
 import { SPECS, allRules, tally } from '../core/audit.js';
 
 const GLYPH = { fail: '✕', warn: '!', pass: '✓', info: 'i', skip: '–' };
-const CATEGORIES = ['Container', 'Video', 'Colour', 'Audio', 'Ladder'];
+const CATEGORIES = ['Container', 'Video', 'Colour', 'Audio', 'Ladder', 'Delivery'];
 const RULES = new Map(allRules().map((r) => [r.id, r]));
 
 /** The colour class of a check: its severity when it failed, else its level. */

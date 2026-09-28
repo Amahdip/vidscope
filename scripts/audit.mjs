@@ -12,8 +12,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { openDocument } from '../web/formats/index.js';
 import { HttpSource } from '../web/core/source.js';
 import { NodeFileSource } from './node-source.mjs';
-import { auditFile, auditLadder, auditMarkdown, tally, allRules, SPECS, mergeExpect, validateExpect, buildReport, toSarif as sarifOf } from '../web/core/audit.js';
+import { auditFile, auditLadder, auditPlaylist, auditMarkdown, tally, allRules, SPECS, mergeExpect, validateExpect, buildReport, toSarif as sarifOf } from '../web/core/audit.js';
 import { contentStem } from '../web/core/compare.js';
+import { measureHls, redact } from '../web/core/hls.js';
 
 const run = promisify(execFile);
 
@@ -24,6 +25,9 @@ Usage
 
   Files that are renditions of one content (movie-1080p.mp4, movie-720p.mp4, ...) are audited
   together as a ladder: aligned key frames, segment lengths, bitrate steps, one audio.
+  An HLS playlist (a file or URL starting with #EXTM3U) is audited as a presentation: every
+  media playlist, the size of every segment, and a few segments opened, against what the
+  playlists declare (BANDWIDTH, AVERAGE-BANDWIDTH, CODECS, RESOLUTION, FRAME-RATE, durations).
 
 Options
   --json <file|->        write the JSON report (schema: docs/audit-report.schema.json)
@@ -37,6 +41,9 @@ Options
   --ladder               audit every input as one ladder (default: group renditions by name)
   --no-ladder            never group
   --header "K: V"        HTTP header for URL inputs and a URL --source (repeatable)
+  --segments <n>         HLS: segment sizes to measure per playlist (default 2000; beyond it
+                         they are spread evenly and the measured peak is a lower bound)
+  --probes <n>           HLS: segments per playlist opened to see what they hold (default 3)
   --budget <MB[,MB...]>  frame data to read per input, in order (the last value repeats;
                          default: 32 for URLs, all for files), e.g. 32,32,8,8,8,8 for a ladder
   --digest               SHA-256 of the index and of every byte range read, in facts.digest
@@ -77,6 +84,8 @@ function parseArgs(argv) {
         o.headers[h.slice(0, k).trim()] = h.slice(k + 1).trim();
         break;
       }
+      case '--segments': o.segments = Number(val()); break;
+      case '--probes': o.probes = Number(val()); break;
       case '--budget': {
         const list = val().split(',').map((x) => Number(x.trim()));
         if (!list.length || list.some((mb) => !Number.isFinite(mb) || mb < 0)) throw new Error('--budget wants megabytes, one value or a comma list');
@@ -193,6 +202,7 @@ const skip = (id, category, title, text) => ({ id, category, level: 'skip', titl
 /** Audit every input; a failure on one input is recorded and the others still run. */
 export async function auditInputs(o, log = () => {}) {
   const results = [];
+  const playlists = [];
   let ffmpegMissing = false;
   for (const [index, input] of o.inputs.entries()) {
     const t0 = Date.now();
@@ -223,8 +233,21 @@ export async function auditInputs(o, log = () => {}) {
         res.checks.push(...skipped);
         for (const s of skipped) log(`${input}: ${s.title.toLowerCase()}: ${s.text}`);
       }
+      if (res.unsupported && /HLS playlist/i.test(res.unsupported)) {
+        const url = isUrl(input) ? input : pathToFileURL(path.resolve(input)).href;
+        const shown = isUrl(input) ? redact(input) : input;
+        const m = await measureHls(url, hlsIo(o), {
+          maxSegments: o.segments ?? 2000,
+          probes: o.probes ?? 3,
+          onProgress: (label, n, total) => log(`${shown}: ${label}: ${n} of ${total} segment sizes`),
+        });
+        const a = auditPlaylist(m, o.expect);
+        playlists.push({ input, file: res.file, ms: Date.now() - t0, facts: a.facts, checks: a.checks });
+        log(`${shown}: ${summaryLine(a.checks)}, ${m.requests} requests in ${Date.now() - t0} ms`);
+        continue;
+      }
       if (res.unsupported) {
-        const message = `not audited: ${res.unsupported}${/playlist|manifest/i.test(res.unsupported) ? ' (playlists and manifests are not audited yet; give the renditions)' : ''}`;
+        const message = `not audited: ${res.unsupported}${/playlist|manifest/i.test(res.unsupported) ? ' (DASH manifests are not audited yet; give the renditions)' : ''}`;
         results.push({ input, file: res.file, error: message, reason: 'unsupported', ms: Date.now() - t0, facts: res.facts, checks: res.checks, item: null });
         log(`${input}: ${message}`);
         continue;
@@ -261,7 +284,7 @@ export async function auditInputs(o, log = () => {}) {
       if (!o.ladder) log(`ladder: ${group.map((r) => r.file).join(' + ')}`);
     }
   }
-  return { results, ladders, ffmpegMissing };
+  return { results, ladders, playlists, ffmpegMissing };
 }
 
 // A name is a rendition of some content when it carries a size, quality or version token;
@@ -308,6 +331,50 @@ function readVersion() {
   }
 }
 
+/**
+ * How the HLS audit reaches playlists and segments: file: URLs from disk, anything else over
+ * HTTP with the --header values. A segment's size comes from a HEAD request, or from a one-byte
+ * range request when the server answers HEAD without a length.
+ */
+function hlsIo(o) {
+  const headers = o.headers ?? {};
+  const local = (url) => url.startsWith('file:');
+  const get = async (url, init = {}) => {
+    const res = await fetch(url, { ...init, headers: { ...headers, ...(init.headers ?? {}) }, redirect: 'follow', signal: AbortSignal.timeout(30000) });
+    if (!res.ok && res.status !== 206) {
+      res.body?.cancel().catch(() => {});
+      throw new Error(`HTTP ${res.status}`);
+    }
+    return res;
+  };
+  return {
+    async text(url) {
+      return local(url) ? fs.readFileSync(fileURLToPath(url), 'utf8') : (await get(url)).text();
+    },
+    async size(url) {
+      if (local(url)) return fs.statSync(fileURLToPath(url)).size;
+      const head = await get(url, { method: 'HEAD' }).catch(() => null);
+      const n = Number(head?.headers.get('content-length'));
+      if (head && n > 0) return n;
+      const r = await get(url, { headers: { Range: 'bytes=0-0' } });
+      r.body?.cancel().catch(() => {});
+      const total = /\/(\d+)$/.exec(r.headers.get('content-range') ?? '');
+      if (total) return Number(total[1]);
+      const len = Number(r.headers.get('content-length'));
+      if (r.status === 200 && len > 0) return len;
+      throw new Error('the server gave no size');
+    },
+    async bytes(url, range) {
+      if (local(url)) {
+        const all = fs.readFileSync(fileURLToPath(url));
+        return new Uint8Array(range ? all.subarray(range.offset, range.offset + range.length) : all);
+      }
+      const r = await get(url, range ? { headers: { Range: `bytes=${range.offset}-${range.offset + range.length - 1}` } } : {});
+      return new Uint8Array(await r.arrayBuffer());
+    },
+  };
+}
+
 /** A URI for SARIF: the URL itself, or a file: URL of the path given. */
 const sarifUri = (input) => (isUrl(input) ? input : pathToFileURL(path.resolve(input)).href);
 
@@ -349,11 +416,12 @@ export async function main(argv) {
   const log = o.quiet ? () => {} : (s) => process.stderr.write(`${s}\n`);
   const out = await auditInputs(o, log);
   const report = toReport(out, o);
-  const title = `Vidscope audit of ${out.results.length === 1 ? out.results[0].file : `${out.results.length} files`}`;
+  const named = [...out.results.map((r) => r.file), ...out.playlists.map((p) => p.file)];
+  const title = `Vidscope audit of ${named.length === 1 ? named[0] : `${named.length} inputs`}`;
   if (o.json) await write(o.json, JSON.stringify(report, null, 2));
-  if (o.md) await write(o.md, auditMarkdown(out.results, out.ladders, { title }));
+  if (o.md) await write(o.md, auditMarkdown(out.results, out.ladders, { title, playlists: out.playlists }));
   if (o.sarif) await write(o.sarif, JSON.stringify(toSarif(report), null, 2));
-  if (!o.quiet && !o.md && !o.json && !o.sarif) await write('-', auditMarkdown(out.results, out.ladders, { title }));
+  if (!o.quiet && !o.md && !o.json && !o.sarif) await write('-', auditMarkdown(out.results, out.ladders, { title, playlists: out.playlists }));
   const t = report.summary;
   if (out.ffmpegMissing) return 70;
   if (t.errors) return 3;
