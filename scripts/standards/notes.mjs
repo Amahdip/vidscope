@@ -117,14 +117,3 @@ export const GAPS = [
     ['—', '—', 'Picture quality against the original upload.', 'Needs the source; available on the command line (--measure --source).'],
   ] },
 ];
-
-import { FA_RULES, FA_SOURCES } from './notes.fa.mjs';
-for (const [k, noteFa] of Object.entries(FA_SOURCES)) {
-  if (SOURCES[k]) SOURCES[k].noteFa = noteFa;
-}
-for (const [id, fa] of Object.entries(FA_RULES)) {
-  if (RULES[id]) {
-    RULES[id].reqFa = fa.req;
-    RULES[id].checkFa = fa.check;
-  }
-}
