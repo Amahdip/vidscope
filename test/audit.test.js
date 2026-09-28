@@ -444,6 +444,40 @@ test('rendition names are size tiers: a wide picture keeps its tier, a wrong one
   assert.match(bad.title, /v-720p\.mp4: labelled 720p, but 640×360 fits a 540p frame/);
 });
 
+test('a damaged payload inside intact structure is found by the full decode, at its frame', { skip: !haveFfmpeg() || !haveSample('h264-aac.mp4') || !haveSample('h264-cenc.mp4') }, async () => {
+  // 310 bytes of a P-frame's slice data flipped: offsets, sizes and timing stay valid, so every
+  // structural check passes and only a decoder sees the damage.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vidscope-decode-'));
+  const clean = path.join(dir, 'clean.mp4');
+  const damaged = path.join(dir, 'damaged.mp4');
+  fs.copyFileSync(sample('h264-aac.mp4'), clean);
+  const doc = await open('h264-aac.mp4');
+  if (doc.loadSamples) await doc.loadSamples();
+  const s = doc.tracks.find((t) => t.kind === 'video').samples;
+  const i = s.key ? [...Array(s.count).keys()].find((k) => k > 30 && !s.key[k]) : 37;
+  const bytes = fs.readFileSync(clean);
+  for (let k = 16; k < Math.min(s.sizes[i], 326); k++) bytes[s.offsets[i] + k] ^= 0x5a;
+  fs.writeFileSync(damaged, bytes);
+  doc._close();
+  try {
+    const opts = { headers: {}, expect: {}, ladder: false, budget: null, measure: false };
+    const plain = await auditInputs({ ...opts, inputs: [damaged] }, () => {});
+    assert.equal(byId(plain.results[0].checks, 'integrity').level, 'pass', 'the structure is intact');
+    assert.equal(byId(plain.results[0].checks, 'decode-integrity').level, 'skip', 'without --decode it is listed as not measured');
+    const out = await auditInputs({ ...opts, decode: true, inputs: [clean, damaged, sample('h264-cenc.mp4')] }, () => {});
+    const [ok, bad, enc] = out.results.map((r) => byId(r.checks, 'decode-integrity'));
+    assert.equal(ok.level, 'pass', ok.title);
+    assert.equal(bad.level, 'fail');
+    assert.equal(bad.severity, 'CRITICAL');
+    assert.match(bad.title, /^1 damaged frame \(first shown at 0:0\d\.\d+\)$/);
+    assert.equal(bad.offset, s.offsets[i], 'the report jumps to the damaged frame\'s bytes');
+    assert.equal(enc.level, 'skip');
+    assert.match(enc.text, /encrypted/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the remux keeps the source audio and video, and is judged on its own', { skip: !haveLadder }, async () => {
   const doc = await open('ladder-remux.mp4');
   const r = await auditFile(doc, {});

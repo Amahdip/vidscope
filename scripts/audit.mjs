@@ -6,7 +6,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { openDocument } from '../web/formats/index.js';
@@ -48,6 +48,7 @@ Options
                          default: 32 for URLs, all for files), e.g. 32,32,8,8,8,8 for a ladder
   --digest               SHA-256 of the index and of every byte range read, in facts.digest
   --measure              run ffmpeg: loudness (ebur128) and, with --source, PSNR/SSIM
+  --decode               decode every frame with ffmpeg and report damage (reads the whole file)
   --source <file|url>    the source the inputs were converted from, for --measure
   --rules                list the rules and exit
   --quiet                no summary on stderr
@@ -94,6 +95,7 @@ function parseArgs(argv) {
       }
       case '--digest': o.digest = true; break;
       case '--measure': o.measure = true; break;
+      case '--decode': o.decode = true; break;
       case '--source': o.source = val(); break;
       case '--rules': o.rules = true; break;
       case '--quiet': o.quiet = true; break;
@@ -164,6 +166,118 @@ async function ffmpeg(args) {
   }
 }
 
+/** Run a command and hand each line of its output to a callback; stop() ends it early. */
+function spawnLines(cmd, args, { stdout, stderr, timeoutMs = 30 * 60000 } = {}) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) {
+      resolve({ code: null, missing: e.code === 'ENOENT', error: String(e.message ?? e) });
+      return;
+    }
+    let stopped = false;
+    const stop = () => {
+      stopped = true;
+      child.kill('SIGKILL');
+    };
+    const timer = setTimeout(() => {
+      stopped = 'timeout';
+      child.kill('SIGKILL');
+    }, timeoutMs);
+    const feed = (stream, fn) => {
+      let rest = '';
+      stream.setEncoding('utf8');
+      stream.on('data', (chunk) => {
+        const parts = (rest + chunk).split(/\r?\n/);
+        rest = parts.pop();
+        for (const l of parts) if (l) fn?.(l, stop);
+      });
+      stream.on('end', () => rest && fn?.(rest, stop));
+    };
+    feed(child.stdout, stdout);
+    feed(child.stderr, stderr);
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      resolve({ code: null, missing: e.code === 'ENOENT', error: String(e.message ?? e) });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ code, stopped });
+    });
+  });
+}
+
+// A line from a decoder (not from the demuxer or the muxer): FFmpeg names the decoder, or says
+// a decoded frame came out corrupt.
+const DECODER_LINE = /corrupt decoded frame|\[dec:|^\[(h264|hevc|av1|libdav1d|vp[89]|mpeg[124]\w*|mjpeg|aac|mp3\w*|mp2\w*|opus|e?ac3|flac|vorbis|alac|dca|truehd|pcm_\w+)\b/;
+const bare = (l) => l.replace(/ @ 0x[0-9a-f]+/g, '').replace(/^\[vist#[^\]]*\] /, '').trim();
+let ffmpegVersion;
+
+/**
+ * Decode every video and audio frame with FFmpeg. A clean file prints nothing at -v warning;
+ * on damage, a second pass with one decoder thread and showinfo finds when the damaged frames
+ * are shown. Returns { tool, frames, errors, corruptFrames, messages, container, at, firstAt, ms }
+ * or { error, missing }.
+ */
+async function decodeAll(input, headers, { locate = 10, timeoutMs = 30 * 60000 } = {}) {
+  const hdr = isUrl(input) && Object.keys(headers).length ? ['-headers', headerArg(headers)] : [];
+  const t0 = Date.now();
+  if (ffmpegVersion === undefined) {
+    const v = await run('ffmpeg', ['-hide_banner', '-version']).catch(() => null);
+    ffmpegVersion = v ? /version (\S+)/.exec(v.stdout)?.[1] ?? null : null;
+  }
+  let frames = 0;
+  let errors = 0;
+  let corruptFrames = 0;
+  const messages = new Map(); // decoder message -> count
+  const container = new Map();
+  // One decoder thread: with frame threads FFmpeg's decoders sometimes let a damaged frame
+  // through without flagging it (1 run in 6 on a test file); single-threaded they never did.
+  const p1 = await spawnLines('ffmpeg', ['-hide_banner', '-nostdin', '-v', 'warning', '-progress', 'pipe:1', '-stats_period', '5', '-threads', '1', ...hdr, '-i', input, '-map', '0:v?', '-map', '0:a?', '-f', 'null', '-'], {
+    timeoutMs,
+    stdout: (l) => {
+      const m = /^frame=(\d+)/.exec(l);
+      if (m) frames = Number(m[1]);
+    },
+    stderr: (l) => {
+      const b = bare(l);
+      if (DECODER_LINE.test(l)) {
+        errors++;
+        if (/corrupt decoded frame/.test(l)) corruptFrames++;
+        if (messages.size < 50 || messages.has(b)) messages.set(b, (messages.get(b) ?? 0) + 1);
+      } else if (container.size < 20) container.set(b, (container.get(b) ?? 0) + 1);
+    },
+  });
+  if (p1.missing) return { error: 'ffmpeg is not installed or not on PATH', missing: true };
+  if (p1.stopped === 'timeout') return { error: `the decode took longer than ${Math.round(timeoutMs / 60000)} minutes` };
+  if (p1.code !== 0 && !errors) return { error: [...container.keys()].slice(-2).join(' | ') || `ffmpeg exited with ${p1.code}` };
+  const at = [];
+  if (errors) {
+    // Where: with one decoder thread, FFmpeg reports a damaged frame just before the filter shows
+    // it. When it flags damaged frames, those are what is located (the decoder's own messages
+    // about concealing come a frame or two earlier); otherwise any decoder message.
+    const marks = corruptFrames ? /corrupt decoded frame/ : DECODER_LINE;
+    let pending = false;
+    await spawnLines('ffmpeg', ['-hide_banner', '-nostdin', '-v', 'info', '-threads', '1', ...hdr, '-i', input, '-map', '0:v:0', '-vf', 'showinfo=checksum=0', '-f', 'null', '-'], {
+      timeoutMs,
+      stderr: (l, stop) => {
+        if (marks.test(l)) pending = true;
+        else if (pending && /Parsed_showinfo/.test(l)) {
+          const m = /pts_time:\s*(-?[\d.]+)/.exec(l);
+          if (m) {
+            if (at[at.length - 1] !== Number(m[1])) at.push(Number(m[1]));
+            pending = false;
+            if (at.length >= locate) stop();
+          }
+        }
+      },
+    });
+  }
+  const list = (m) => [...m].map(([text, count]) => (count > 1 ? `${text} (×${count})` : text));
+  return { tool: ffmpegVersion ? `FFmpeg ${ffmpegVersion}` : 'FFmpeg', frames, errors, corruptFrames, messages: list(messages).slice(0, 8), container: list(container).slice(0, 5), at, firstAt: at[0] ?? null, ms: Date.now() - t0 };
+}
+
 /** Integrated loudness and true peak with ffmpeg's ebur128 filter. */
 async function measureLoudness(input, headers) {
   const args = [];
@@ -214,6 +328,14 @@ export async function auditInputs(o, log = () => {}) {
       const measured = {};
       const skipped = [];
       let res = await auditFile(doc, o.expect, { payloadBudget: budget });
+      if (o.decode && !res.unsupported) {
+        log(`${isUrl(input) ? input.replace(/\?.*$/, '?…') : input}: decoding every frame`);
+        const encrypted = doc.tracks.some((t) => t.encrypted || t.encryption);
+        const d = encrypted ? { error: 'the samples are encrypted: decoding them needs the key' } : await decodeAll(input, o.headers);
+        if (d.missing) ffmpegMissing = true;
+        measured.decode = d;
+        if (!o.measure) res = await auditFile(doc, o.expect, { payloadBudget: budget, measured });
+      }
       if (o.measure) {
         const l = await measureLoudness(input, o.headers);
         if (l.error) {

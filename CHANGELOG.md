@@ -6,6 +6,9 @@ Each entry links to the pull request with the details.
 ## 2026-09-28
 
 ### Added
+- `vidscope audit --decode` decodes every frame with FFmpeg and reports damaged frames with the
+  moment they are shown and their bytes; the conversion check page offers it as "Decode every
+  frame" ([#30](https://github.com/Amahdip/vidscope/pull/30)).
 - HLS presentations are audited from their playlist: every media playlist, every segment's size
   and a few segments opened, against BANDWIDTH (the peak segment bit rate), AVERAGE-BANDWIDTH,
   CODECS, RESOLUTION, FRAME-RATE, target durations, alignment, key frames, I-frame playlists and

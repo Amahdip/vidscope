@@ -194,6 +194,12 @@ standards say. `--json` writes a report ([docs/audit-report.schema.json](docs/au
 the original. The exit code is 2 on a critical finding, 1 on a warning, 3 when an input could not
 be audited.
 
+`--decode` decodes every video and audio frame with FFmpeg, single-threaded (with frame threads
+FFmpeg can let a damaged frame through unflagged), and reports each damaged frame with the moment
+it is shown and a jump to its bytes. It finds what no structural check can: a payload damaged
+inside intact boxes and tables. It reads the whole file, so it is off by default; encrypted
+tracks are reported as not decoded.
+
 An HLS playlist is audited as the presentation players receive. Give the multivariant (or a
 media) playlist, a file or a URL, and Vidscope reads every media playlist behind it, measures the
 size of every segment (HEAD requests, or one-byte range requests), opens a few segments with its
@@ -213,8 +219,8 @@ multiple of the segment length, as FFmpeg's HLS muxer does. A GOP cut short anyw
 long segment it causes, and the peak bit rate is that of the busiest segment, as HLS measures
 BANDWIDTH.
 
-What the audit does not do yet: it does not read DASH manifests, and it checks structure and
-frame headers rather than decoding every frame.
+What the audit does not do yet: it does not read DASH manifests, and without `--decode` it
+checks structure and frame headers rather than decoding every frame.
 
 ## Running it
 
