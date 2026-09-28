@@ -6,6 +6,9 @@ Each entry links to the pull request with the details.
 ## 2026-09-28
 
 ### Added
+- `vidscope audit --measure` reads only the audio samples for loudness and measures renditions
+  that share an audio encode once, from the smallest file; over HTTP a ladder costs a few MB
+  instead of every rendition in full ([#35](https://github.com/Amahdip/vidscope/pull/35)).
 - `vidscope audit --decode` decodes every frame with FFmpeg and reports damaged frames with the
   moment they are shown and their bytes; the conversion check page offers it as "Decode every
   frame" ([#30](https://github.com/Amahdip/vidscope/pull/30)).

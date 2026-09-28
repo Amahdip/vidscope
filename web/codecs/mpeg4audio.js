@@ -256,3 +256,25 @@ export function parseAdts(u8, start, end, base, out) {
   }
   return h;
 }
+
+/**
+ * A 7-byte ADTS header (no CRC) for one raw AAC frame of `payloadLength` bytes, from the
+ * track's AudioSpecificConfig: what MP4 leaves out, so the frames read as a plain .aac stream.
+ * HE-AAC is written as its AAC-LC core; decoders find the SBR data themselves. Returns null for
+ * what ADTS cannot say: object types above 4, a channel layout given by a PCE, a sample rate
+ * outside the index table, or a frame over 8191 bytes.
+ */
+export function adtsHeader(asc, payloadLength) {
+  const sfi = SAMPLE_RATES.indexOf(asc?.sampleRate);
+  const len = payloadLength + 7;
+  if (!asc || asc.aot < 1 || asc.aot > 4 || sfi < 0 || !asc.channelConfig || asc.channelConfig > 7 || len > 8191) return null;
+  const h = new Uint8Array(7);
+  h[0] = 0xff;
+  h[1] = 0xf1; // MPEG-4, layer 0, no CRC
+  h[2] = ((asc.aot - 1) << 6) | (sfi << 2) | (asc.channelConfig >> 2);
+  h[3] = ((asc.channelConfig & 3) << 6) | (len >> 11);
+  h[4] = (len >> 3) & 0xff;
+  h[5] = ((len & 7) << 5) | 0x1f; // buffer fullness 0x7FF: variable rate
+  h[6] = 0xfc; // one raw data block
+  return h;
+}
