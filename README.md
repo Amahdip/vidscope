@@ -214,9 +214,12 @@ the server's byte proxy.
 
 `vidscope audit` checks files against the streaming standards without a browser, and files
 that are versions of one content (`movie-1080p.mp4`, `movie-720p.mp4`, …) together as a
-ladder: about 50 rules from the HLS authoring specification, RFC 8216, H.264 Annex A, H.273,
-ISO 14496-12/CMAF, Apple's audio-priming note, EBU R 128 and ITU-R BT.1359, each with a
-severity, the byte offset it is about, and the FFmpeg change that usually fixes it.
+ladder: about 50 rules from Apple's HLS authoring specification, RFC 8216, H.264, H.273,
+ISO 14496-12, Apple TN2258 (AAC encoder delay), EBU R 128 and ITU-R BT.1359, each with the
+item or clause it comes from, a severity that follows it (a MUST broken is critical, a SHOULD
+a warning), the byte offset it is about, and the FFmpeg change that usually fixes it. The few
+rules that are common encoding practice rather than a standard say so. `--rules` lists them
+all with their sources.
 
 ```bash
 node bin/vidscope.js audit --expect gop=5,fpsMax=60,colour=1/1/1 --md report.md movie-*.mp4

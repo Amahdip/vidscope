@@ -20,8 +20,8 @@ export const REMEDIES = {
     fix: 'Encode audio and video from the same trimmed source (-t on the input), and avoid -shortest at mux time; check that chunk concatenation keeps every packet.',
   },
   profile: {
-    cause: 'The encoder was asked for Baseline, or for a profile the ladder does not need.',
-    fix: '-profile:v main for renditions up to 720p, -profile:v high above (H.264).',
+    cause: 'The encoder was asked for Baseline or Main, or for a profile above High (High 10, 4:2:2).',
+    fix: '-profile:v high on every H.264 rendition (Apple asks for High in preference to Main or Baseline); 8-bit 4:2:0 input (-pix_fmt yuv420p) keeps x264 within High.',
   },
   'level-holds': {
     cause: 'A level was forced with -level that the picture size, frame rate or bitrate exceeds.',
@@ -32,8 +32,8 @@ export const REMEDIES = {
     fix: 'Let x264 choose (no -level), or set -level to the lowest that fits; devices are gated by the signalled level.',
   },
   'level-cap': {
-    cause: 'Frame rate or size beyond what level 4.2 allows.',
-    fix: 'Cap the ladder at 1080p60: -r 60 and 1920x1080 for the top rung, or provide a separate HEVC rendition for more.',
+    cause: 'Frame rate, size or bit rate beyond what level 5.2 allows.',
+    fix: 'Keep H.264 renditions within Level 5.2 (and some at 4.1 or below, e.g. up to 1080p30): lower the frame rate or size of the top rung, or provide it in HEVC.',
   },
   'even-size': {
     cause: 'A scale filter produced an odd dimension when keeping the aspect ratio.',
@@ -45,7 +45,7 @@ export const REMEDIES = {
   },
   codec: {
     cause: 'The source codec was copied, or a codec chosen that HLS clients for Apple devices do not decode.',
-    fix: '-c:v libx264 (or libx265 with -tag:v hvc1) for the HLS renditions; keep VP9/AV1 for separate DASH/WebM renditions.',
+    fix: '-c:v libx264 (or libx265 with -tag:v hvc1) for the HLS renditions; AV1 only in fMP4 and alongside H.264; keep VP9 for separate DASH/WebM renditions.',
   },
   'b-frames': {
     cause: 'B-frames enabled while Baseline profile was requested.',
