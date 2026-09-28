@@ -45,7 +45,16 @@ Add `{ cause, fix }` to `web/core/remedies.js`: the usual cause in an FFmpeg-bas
 and the exact option that fixes it. Titles state the finding with its numbers ("5 s segments:
 2 of 137 run long (7 s at 4:55, 7.4 s at 9:57)"), not a verdict word.
 
-## 5. Prove it
+## 5. The standards register
+
+Every rule is listed in `web/standards.html`, which the supervisor of a service uses to confirm
+the sources. Add to `scripts/standards/notes.mjs` what the source says (in our own words) and
+what the audit checks, and the same in Farsi to `scripts/standards/notes.fa.mjs`, keeping its
+wording table (MUST as «باید», SHOULD as «توصیه می‌شود»). Run `node scripts/standards/build.mjs`:
+it stops on a rule without both notes, and on a Farsi note made from an older English text,
+printing the `of` value to set once the Farsi is updated.
+
+## 6. Prove it
 
 - In `test/audit.test.js`, build the case with FFmpeg (`makeFixture`) and assert the level,
   severity and title. Include the passing case.

@@ -6,6 +6,9 @@ Each entry links to the pull request with the details.
 ## 2026-09-28
 
 ### Added
+- The standards register reads in Farsi as well as English, right to left, with MUST and SHOULD
+  kept apart in the wording; the build stops when an English note changes without its Farsi
+  ([#33](https://github.com/Amahdip/vidscope/pull/33)).
 - `vidscope audit --decode` decodes every frame with FFmpeg and reports damaged frames with the
   moment they are shown and their bytes; the conversion check page offers it as "Decode every
   frame" ([#30](https://github.com/Amahdip/vidscope/pull/30)).
