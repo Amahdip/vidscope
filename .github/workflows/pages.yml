@@ -1,0 +1,36 @@
+# Publishes web/ to GitHub Pages: https://amahdip.github.io/vidscope/
+# The folder is the whole application (no build step), so this only uploads and deploys it.
+# The first run turns Pages on for the repository.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; let a running one finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deploy
+        uses: actions/deploy-pages@v4
