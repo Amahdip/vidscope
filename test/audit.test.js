@@ -445,35 +445,47 @@ test('rendition names are size tiers: a wide picture keeps its tier, a wrong one
 });
 
 test('a damaged payload inside intact structure is found by the full decode, at its frame', { skip: !haveFfmpeg() || !haveSample('h264-aac.mp4') || !haveSample('h264-cenc.mp4') }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vidscope-decode-'));
   // 310 bytes of a P-frame's slice data flipped: offsets, sizes and timing stay valid, so every
   // structural check passes and only a decoder sees the damage.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vidscope-decode-'));
+  const damage = async (from, to) => {
+    const src = await NodeFileSource.open(from);
+    const doc = await openDocument(src);
+    if (doc.loadSamples) await doc.loadSamples();
+    const s = doc.tracks.find((t) => t.kind === 'video').samples;
+    const i = [...Array(s.count).keys()].find((k) => k > 30 && s.key && !s.key[k]);
+    await src.close();
+    const bytes = fs.readFileSync(from);
+    for (let k = 16; k < Math.min(s.sizes[i], 326); k++) bytes[s.offsets[i] + k] ^= 0x5a;
+    fs.writeFileSync(to, bytes);
+    return { offsets: s.offsets, i };
+  };
   const clean = path.join(dir, 'clean.mp4');
-  const damaged = path.join(dir, 'damaged.mp4');
   fs.copyFileSync(sample('h264-aac.mp4'), clean);
-  const doc = await open('h264-aac.mp4');
-  if (doc.loadSamples) await doc.loadSamples();
-  const s = doc.tracks.find((t) => t.kind === 'video').samples;
-  const i = s.key ? [...Array(s.count).keys()].find((k) => k > 30 && !s.key[k]) : 37;
-  const bytes = fs.readFileSync(clean);
-  for (let k = 16; k < Math.min(s.sizes[i], 326); k++) bytes[s.offsets[i] + k] ^= 0x5a;
-  fs.writeFileSync(damaged, bytes);
-  doc._close();
+  // The same video without its edit list: FFmpeg's timeline then starts at the decoding delay
+  // (0.08 s), not at zero, and the jump must still land on the damaged frame.
+  const late = path.join(dir, 'no-edit-list.mp4');
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', clean, '-c', 'copy', '-use_editlist', '0', late], { stdio: 'ignore' });
+  const cases = [await damage(clean, path.join(dir, 'damaged.mp4')), await damage(late, path.join(dir, 'damaged-no-edit-list.mp4'))];
   try {
     const opts = { headers: {}, expect: {}, ladder: false, budget: null, measure: false };
-    const plain = await auditInputs({ ...opts, inputs: [damaged] }, () => {});
+    const plain = await auditInputs({ ...opts, inputs: [path.join(dir, 'damaged.mp4')] }, () => {});
     assert.equal(byId(plain.results[0].checks, 'integrity').level, 'pass', 'the structure is intact');
     assert.equal(byId(plain.results[0].checks, 'decode-integrity').level, 'skip', 'without --decode it is listed as not measured');
-    const out = await auditInputs({ ...opts, decode: true, inputs: [clean, damaged, sample('h264-cenc.mp4')] }, () => {});
-    const [ok, bad, enc] = out.results.map((r) => byId(r.checks, 'decode-integrity'));
+    const out = await auditInputs({ ...opts, decode: true, inputs: [clean, path.join(dir, 'damaged.mp4'), path.join(dir, 'damaged-no-edit-list.mp4'), sample('h264-cenc.mp4')] }, () => {});
+    const [ok, ...rest] = out.results.map((r) => byId(r.checks, 'decode-integrity'));
+    const enc = rest.pop();
     assert.equal(ok.level, 'pass', ok.title);
-    assert.equal(bad.level, 'fail');
-    assert.equal(bad.severity, 'CRITICAL');
-    assert.match(bad.title, /^1 damaged frame \(first shown at 0:0\d\.\d+\)$/);
-    // The first damaged frame shown is the damaged one or a B-frame that refers to it, shown
-    // earlier: either way within a few frames of the damaged packet in decoding order.
-    const k = s.offsets.indexOf(bad.offset);
-    assert.ok(k >= 0 && Math.abs(k - i) <= 3, `the report jumps to a damaged frame's bytes (frame ${k}, damaged packet ${i})`);
+    rest.forEach((bad, n) => {
+      assert.equal(bad.level, 'fail');
+      assert.equal(bad.severity, 'CRITICAL');
+      assert.match(bad.title, /^1 damaged frame \(first shown at 0:0\d\.\d+\)$/);
+      // The first damaged frame shown is the damaged packet or a B-frame decoded after it that
+      // refers to it; never one decoded before it.
+      const { offsets, i } = cases[n];
+      const k = offsets.indexOf(bad.offset);
+      assert.ok(k >= i && k - i <= 3, `${n ? 'without an edit list: ' : ''}the jump lands on frame ${k}, the damaged packet is ${i}`);
+    });
     assert.equal(enc.level, 'skip');
     assert.match(enc.text, /encrypted/);
   } finally {

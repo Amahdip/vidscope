@@ -254,19 +254,25 @@ async function decodeAll(input, headers, { locate = 10, timeoutMs = 30 * 60000 }
   if (p1.code !== 0 && !errors) return { error: [...container.keys()].slice(-2).join(' | ') || `ffmpeg exited with ${p1.code}` };
   const at = [];
   if (errors) {
-    // Where: with one decoder thread, FFmpeg reports a damaged frame just before the filter shows
-    // it. When it flags damaged frames, those are what is located (the decoder's own messages
-    // about concealing come a frame or two earlier); otherwise any decoder message.
+    // Where: the decoder's own log, with -debug_ts, names each frame it hands on ("decoder -> pts")
+    // right after flagging it as damaged. Both lines come from the decoder's thread, so their order
+    // is fixed (the filter runs in another thread since FFmpeg 7, so its lines can come early or
+    // late). When FFmpeg flags damaged frames those are located; otherwise any decoder message.
     const marks = corruptFrames ? /corrupt decoded frame/ : DECODER_LINE;
     let pending = false;
-    await spawnLines('ffmpeg', ['-hide_banner', '-nostdin', '-v', 'info', '-threads', '1', ...hdr, '-i', input, '-map', '0:v:0', '-vf', 'showinfo=checksum=0', '-f', 'null', '-'], {
+    // Times count from the first frame shown, as Vidscope's own do: FFmpeg's timeline may start
+    // a little after zero (a decoding delay without an edit list), which would shift every jump.
+    let first = null;
+    await spawnLines('ffmpeg', ['-hide_banner', '-nostdin', '-v', 'info', '-threads', '1', '-debug_ts', ...hdr, '-i', input, '-map', '0:v:0', '-f', 'null', '-'], {
       timeoutMs,
       stderr: (l, stop) => {
         if (marks.test(l)) pending = true;
-        else if (pending && /Parsed_showinfo/.test(l)) {
-          const m = /pts_time:\s*(-?[\d.]+)/.exec(l);
-          if (m) {
-            if (at[at.length - 1] !== Number(m[1])) at.push(Number(m[1]));
+        else {
+          const m = /\[dec:[^\]]*\] decoder -> pts:\S+ pts_time:(-?[\d.]+)/.exec(l);
+          if (m && first === null) first = Number(m[1]);
+          if (m && pending) {
+            const t = Math.round((Number(m[1]) - first) * 1e6) / 1e6;
+            if (at[at.length - 1] !== t) at.push(t);
             pending = false;
             if (at.length >= locate) stop();
           }
