@@ -100,19 +100,26 @@ const app = {
     }
   },
 
-  /** Add files chosen or dropped by the user; opens the first one, or adds them to the comparison. */
+  /**
+   * Add files chosen or dropped by the user; opens the first one, or adds them to the comparison.
+   * Returns an entry for every file passed, new or already in the list.
+   */
   addLocalFiles(fileList, { open = true } = {}) {
+    const files = store.get().files;
+    const picked = [];
     const added = [];
     for (const file of fileList) {
-      const entry = { kind: 'local', key: `l${++localCount}`, name: file.name, size: file.size, file, dir: 'local file' };
-      added.push(entry);
+      // The same file chosen twice stays one entry: comparing a file with itself helps nobody.
+      const known = files.find((f) => f.kind === 'local' && f.name === file.name && f.size === file.size && f.file?.lastModified === file.lastModified);
+      picked.push(known ?? { kind: 'local', key: `l${++localCount}`, name: file.name, size: file.size, file, dir: 'local file' });
+      if (!known) added.push(picked[picked.length - 1]);
     }
-    if (!added.length) return added;
-    store.set({ files: [...store.get().files, ...added] });
+    if (!picked.length) return picked;
+    if (added.length) store.set({ files: [...files, ...added] });
     const cmp = store.get().compare;
-    if (open && cmp) this.openCompare([...cmp.keys, ...added.map((e) => e.key)], cmp.ref);
-    else if (open) this.openEntry(added[0]);
-    return added;
+    if (open && cmp) this.openCompare([...new Set([...cmp.keys, ...picked.map((e) => e.key)])], cmp.ref);
+    else if (open) this.openEntry(picked[0]);
+    return picked;
   },
 
   /** The byte source of a file entry: the local server, or a file from this computer. */

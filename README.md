@@ -29,6 +29,9 @@ node bin/vidscope.js ~/Movies
 No video at hand? `npm run samples` makes about 60 short test files in every format with
 FFmpeg, and `npm start` opens them.
 
+Vidscope also runs from any static host, with the files you drop onto the page and no server
+at all: see [On a static host](#on-a-static-host).
+
 ## What it shows
 
 - **To-scale map** of the file and of any box you zoom into, plus one card per part so
@@ -164,11 +167,33 @@ onto the page, or open a path from the file menu. In a clone, `npm link` install
 Options: `--port <n>` (default 8766; the next free port is used if taken), `--host <addr>`
 (default 127.0.0.1), `--no-open`, `-r/--recursive`.
 
-`npm run samples` writes about 50 short files covering every format and most codecs to
+`npm run samples` writes about 60 short files covering every format and most codecs to
 `samples/` (the tests use them too); `npm start` serves that folder.
 
 The server binds to localhost, answers only requests addressed to localhost (a DNS
 rebinding guard), and only serves the files you named.
+
+### On a static host
+
+`web/` is the whole application: no build step, no server code, no dependencies. Copy it to
+any static host and Vidscope runs from there. Files are chosen with the file picker or
+dropped onto the page, and everything — parsing, frame types, bitrates, comparisons,
+decoding pictures for the pixel microscope — happens in the visitor's browser. Nothing is
+uploaded, and a multi-gigabyte file is read a few bytes at a time from disk, exactly as it
+is with the server.
+
+What the server adds is the list of files you name on the command line and opening a path on
+the machine; both are gone on a static host, where the visitor brings their own files.
+
+The repository carries the configuration for two hosts:
+
+- **GitHub Pages**: `.github/workflows/pages.yml` publishes `web/` on every push to `main`,
+  turning Pages on the first time it runs.
+- **Netlify**: `netlify.toml` (`publish = "web"`, no build command); connect the repository
+  at [netlify.com](https://netlify.com).
+
+Serve it over HTTPS (or from localhost): browsers only offer WebCodecs, which the pixel
+microscope decodes with, in a secure context.
 
 ### Keyboard
 
