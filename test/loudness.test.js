@@ -15,6 +15,10 @@ import { sampleRuns } from '../web/core/extract.js';
 import { auditInputs } from '../scripts/audit.mjs';
 
 const byId = (checks, id) => checks.find((c) => c.id === id);
+// The frames streamed to FFmpeg include the codec's first samples, which FFmpeg reading the file
+// trims by its edit list; on a clip of a few seconds that moves the rounded value by 0.1 LU,
+// the accuracy EBU Tech 3341 asks of a meter.
+const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 0.1 + 1e-9, `${what}: ${a}, FFmpeg on the whole file ${b}`);
 
 test('an ADTS header written from the AudioSpecificConfig reads back as the same frame', () => {
   const head = adtsHeader({ aot: 2, sampleRate: 48000, channelConfig: 2 }, 371);
@@ -80,9 +84,9 @@ after(() => {
   if (dir) fs.rmSync(dir, { recursive: true, force: true });
 });
 
-/** FFmpeg's own reading of the whole file: { integrated, truePeak }. */
+/** FFmpeg's own reading of the whole file, mono as dual mono: { integrated, truePeak }. */
 function reference(file) {
-  const err = spawnSync('ffmpeg', ['-hide_banner', '-nostdin', '-i', file, '-vn', '-af', 'ebur128=peak=true', '-f', 'null', '-'], { encoding: 'utf8' }).stderr;
+  const err = spawnSync('ffmpeg', ['-hide_banner', '-nostdin', '-i', file, '-vn', '-af', 'ebur128=peak=true:dualmono=true', '-f', 'null', '-'], { encoding: 'utf8' }).stderr;
   const tail = err.slice(err.lastIndexOf('Integrated loudness'));
   return { integrated: Number(/I:\s*(-?[\d.]+) LUFS/.exec(tail)[1]), truePeak: Number(/Peak:\s*(-?[\d.]+) dBFS/.exec(tail)[1]) };
 }
@@ -95,8 +99,8 @@ test('a ladder sharing one audio encode is measured once, from its smallest file
   const want = reference(path.join(dir, 'film-720p.mp4'));
   for (const r of out.results) {
     const l = byId(r.checks, 'loudness');
-    assert.equal(l.value, want.integrated, `${r.file}: the same integrated loudness as FFmpeg reading the whole file`);
-    assert.equal(byId(r.checks, 'true-peak').value, want.truePeak, `${r.file}: the same true peak`);
+    near(l.value, want.integrated, `${r.file}: integrated loudness`);
+    near(byId(r.checks, 'true-peak').value, want.truePeak, `${r.file}: true peak`);
   }
   const said = lines.filter((l) => /loudness/.test(l));
   assert.equal(said.length, 1, said.join('\n'));
@@ -111,7 +115,19 @@ test('AC-3 frames stream as they are, and Opus is left to FFmpeg', { skip: !have
     const lines = [];
     const out = await auditInputs({ inputs: [sample(name)], headers: {}, expect: {}, ladder: false, budget: null, measure: true, source: null }, (l) => lines.push(l));
     const want = reference(sample(name));
-    assert.equal(byId(out.results[0].checks, 'loudness').value, want.integrated, name);
+    near(byId(out.results[0].checks, 'loudness').value, want.integrated, name);
     assert.match(lines.find((l) => /loudness/.test(l)), via, name);
   }
+});
+
+test('a mono rendition measures as loud as the same sound in stereo, as players send it to both speakers', { skip: !haveFfmpeg() }, async () => {
+  // R 128 measures mono as one loudspeaker, 3 LU below the same signal on two; a player plays a
+  // mono track on both, so the audit measures it as dual mono (EBU Tech 3344).
+  // The stereo file carries the tone at full level on both channels, as a player plays mono.
+  for (const [name, pan] of [['tone-stereo.mp4', 'pan=stereo|c0=c0|c1=c0'], ['tone-mono.mp4', 'pan=mono|c0=c0']]) {
+    execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=f=1000:d=10:sample_rate=48000', '-af', pan, '-c:a', 'aac', '-b:a', '96k', path.join(dir, name)], { stdio: 'ignore' });
+  }
+  const out = await auditInputs({ inputs: ['tone-stereo.mp4', 'tone-mono.mp4'].map((n) => path.join(dir, n)), headers: {}, expect: {}, ladder: false, budget: null, measure: true, source: null }, () => {});
+  const [stereo, mono] = out.results.map((r) => byId(r.checks, 'loudness').value);
+  assert.ok(Math.abs(stereo - mono) <= 0.2, `stereo ${stereo} LUFS, mono ${mono} LUFS`);
 });
