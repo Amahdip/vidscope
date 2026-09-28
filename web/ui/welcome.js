@@ -37,7 +37,8 @@ export class Welcome {
     if (s.error) box.append(h('div', { class: 'err' }, s.error));
     if (s.auditServer) {
       // An audit server next to the app: a converted video by its id or URL, straight from the storage.
-      const input = h('input', { class: 'rpq', type: 'search', placeholder: 'video id, rendition URL or flv_name', 'aria-label': 'Video id, rendition URL or flv_name', spellcheck: 'false', autocomplete: 'off' });
+      const placeholder = s.auditServer.placeholder ?? 'video id or rendition URL';
+      const input = h('input', { class: 'rpq', type: 'search', placeholder, 'aria-label': placeholder, spellcheck: 'false', autocomplete: 'off' });
       box.append(h('form', { class: 'wcheck', onsubmit: (e) => {
         e.preventDefault();
         const q = input.value.trim();
