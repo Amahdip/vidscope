@@ -15,6 +15,7 @@ import { NodeFileSource } from './node-source.mjs';
 import { auditFile, auditLadder, auditPlaylist, auditMarkdown, tally, allRules, SPECS, mergeExpect, validateExpect, buildReport, toSarif as sarifOf } from '../web/core/audit.js';
 import { contentStem } from '../web/core/compare.js';
 import { measureHls, redact } from '../web/core/hls.js';
+import { audioStream, audioStreamFormat } from '../web/core/extract.js';
 
 const run = promisify(execFile);
 
@@ -47,7 +48,8 @@ Options
   --budget <MB[,MB...]>  frame data to read per input, in order (the last value repeats;
                          default: 32 for URLs, all for files), e.g. 32,32,8,8,8,8 for a ladder
   --digest               SHA-256 of the index and of every byte range read, in facts.digest
-  --measure              run ffmpeg: loudness (ebur128) and, with --source, PSNR/SSIM
+  --measure              run ffmpeg: loudness (ebur128; only the audio is read, once per
+                         audio encode) and, with --source, PSNR/SSIM
   --decode               decode every frame with ffmpeg and report damage (reads the whole file)
   --source <file|url>    the source the inputs were converted from, for --measure
   --rules                list the rules and exit
@@ -284,18 +286,158 @@ async function decodeAll(input, headers, { locate = 10, timeoutMs = 30 * 60000 }
   return { tool: ffmpegVersion ? `FFmpeg ${ffmpegVersion}` : 'FFmpeg', frames, errors, corruptFrames, messages: list(messages).slice(0, 8), container: list(container).slice(0, 5), at, firstAt: at[0] ?? null, ms: Date.now() - t0 };
 }
 
-/** Integrated loudness and true peak with ffmpeg's ebur128 filter. */
-async function measureLoudness(input, headers) {
-  const args = [];
-  if (isUrl(input) && Object.keys(headers).length) args.push('-headers', headerArg(headers));
-  args.push('-i', input, '-vn', '-af', 'ebur128=peak=true', '-f', 'null', '-');
-  const r = await ffmpeg(args);
-  if (!r.ok) return { error: r.stderr, missing: r.missing };
-  const tail = r.stderr.slice(r.stderr.lastIndexOf('Integrated loudness'));
+/** The integrated loudness and true peak ffmpeg's ebur128 filter prints when it ends. */
+function ebur128Summary(stderr) {
+  const tail = stderr.slice(stderr.lastIndexOf('Integrated loudness'));
   const i = /I:\s*(-?[\d.]+) LUFS/.exec(tail);
   const tp = /Peak:\s*(-?[\d.]+) dBFS/.exec(tail);
-  if (!i) return { error: /Output file is empty|does not contain any stream|Stream map .* matches no streams/.test(r.stderr) ? 'no audio stream' : 'ffmpeg printed no loudness' };
-  return { integrated: Number(i[1]), truePeak: tp ? Number(tp[1]) : undefined };
+  return i ? { integrated: Number(i[1]), truePeak: tp ? Number(tp[1]) : undefined } : null;
+}
+
+const lastLines = (text, n = 3) => text.split('\n').map((l) => l.trim()).filter(Boolean).slice(-n).join(' | ');
+
+/** Run a command with `chunks` (an async iterable of bytes) on its stdin; resolves with its stderr. */
+function spawnFed(cmd, args, chunks, { timeoutMs = 20 * 60000 } = {}) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(cmd, args, { stdio: ['pipe', 'ignore', 'pipe'] });
+    } catch (e) {
+      resolve({ code: null, missing: e.code === 'ENOENT', stderr: String(e.message ?? e) });
+      return;
+    }
+    let stderr = '';
+    let failed = null;
+    let closed = false;
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (d) => {
+      stderr += d;
+      if (stderr.length > 1 << 20) stderr = stderr.slice(-(1 << 19)); // the summary is at the end
+    });
+    child.stdin.on('error', () => {}); // ffmpeg stopped reading; its stderr says why
+    const timer = setTimeout(() => {
+      failed = `no result after ${timeoutMs / 60000} minutes`;
+      child.kill('SIGKILL');
+    }, timeoutMs);
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      closed = true;
+      resolve({ code: null, missing: e.code === 'ENOENT', stderr: String(e.message ?? e) });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      closed = true;
+      resolve({ code, stderr, failed });
+    });
+    (async () => {
+      try {
+        for await (const chunk of chunks) {
+          if (closed) break;
+          if (!child.stdin.write(chunk)) await new Promise((r) => { child.stdin.once('drain', r); child.once('close', r); });
+        }
+      } catch (e) {
+        failed = String(e.message ?? e);
+        child.kill('SIGKILL');
+      }
+      if (!closed) child.stdin.end();
+    })();
+  });
+}
+
+/**
+ * Integrated loudness and true peak with ffmpeg's ebur128 filter. The audio samples are read
+ * by range and piped to ffmpeg, so a file on a server costs its audio (about 1 MB a minute of
+ * stereo AAC), not its size. A track that cannot be streamed so (Opus, MPEG-TS, a channel
+ * layout given by a PCE) is left to ffmpeg, which reads the whole file.
+ * Returns { integrated, truePeak, read: { via, bytes, requests } } or { error, missing }.
+ */
+async function measureLoudness(input, headers, doc, raw) {
+  const t = doc.tracks.find((x) => x.kind === 'audio');
+  if (!t) return { error: 'no audio stream' };
+  const { format, reason } = audioStreamFormat(doc, t);
+  const ebur128 = ['-af', 'ebur128=peak=true', '-f', 'null', '-'];
+  if (format && raw?.readRaw) {
+    const read = { via: 'audio samples', bytes: 0, requests: 0 };
+    const readRaw = async (at, n) => {
+      const u8 = await raw.readRaw(at, n);
+      read.bytes += u8.length;
+      read.requests++;
+      return u8;
+    };
+    const r = await spawnFed('ffmpeg', ['-hide_banner', '-v', 'info', '-f', format, '-i', 'pipe:0', ...ebur128], audioStream(doc, t, readRaw));
+    if (r.missing) return { error: 'ffmpeg is not installed or not on PATH', missing: true };
+    const m = !r.failed && r.code === 0 ? ebur128Summary(r.stderr) : null;
+    return m ? { ...m, read } : { error: r.failed ?? (lastLines(r.stderr) || 'ffmpeg printed no loudness') };
+  }
+  const args = [];
+  if (isUrl(input) && Object.keys(headers).length) args.push('-headers', headerArg(headers));
+  args.push('-i', input, '-vn', ...ebur128);
+  const r = await ffmpeg(args);
+  if (!r.ok) return { error: r.stderr, missing: r.missing };
+  const m = ebur128Summary(r.stderr);
+  if (!m) return { error: /Output file is empty|does not contain any stream|Stream map .* matches no streams/.test(r.stderr) ? 'no audio stream' : 'ffmpeg printed no loudness' };
+  return { ...m, read: { via: 'whole file', reason, bytes: null, requests: null } };
+}
+
+/**
+ * Loudness for the inputs `auditInputs` kept open, then their checks again with it. Renditions
+ * carrying the same audio encode share one measurement, taken from the smallest of them: over
+ * HTTP that reads a few MB of the lowest rendition instead of every rendition in full.
+ * Returns true when ffmpeg is missing.
+ */
+async function measureLoudnessOnce(later, results, o, log) {
+  const shown = (i) => (isUrl(i) ? redact(i) : i);
+  let missing = false;
+  const encodes = new Map();
+  for (const p of later) {
+    const key = p.id ?? `input ${p.slot}`;
+    encodes.get(key)?.push(p) ?? encodes.set(key, [p]);
+  }
+  try {
+    for (const members of encodes.values()) {
+      const from = members.reduce((a, b) => (b.size < a.size ? b : a));
+      let l;
+      try {
+        l = await measureLoudness(from.input, o.headers, from.doc, from.src);
+      } catch (e) {
+        l = { error: String(e?.message ?? e) };
+      }
+      if (l.missing) missing = true;
+      if (!l.error) {
+        const how = l.read.via === 'audio samples' ? `${(l.read.bytes / 1048576).toFixed(1)} MB in ${l.read.requests} ${l.read.requests === 1 ? 'request' : 'requests'}` : `the whole file, read by ffmpeg (${l.read.reason})`;
+        log(`${shown(from.input)}: loudness ${l.integrated} LUFS, true peak ${l.truePeak ?? '?'} dBTP, from ${how}${members.length > 1 ? `; the same audio in ${members.length - 1} other ${members.length === 2 ? 'input' : 'inputs'}` : ''}`);
+      }
+      for (const p of members) {
+        if (l.error) p.skipped.push(skip('loudness', 'Audio', 'Loudness not measured', l.error));
+        else p.measured.loudness = p === from ? l : { ...l, sameAs: shown(from.input) };
+        const r = results[p.slot];
+        const again = await auditFile(p.doc, o.expect, { payloadBudget: p.budget, measured: p.measured });
+        // A measurement that failed says why, in place of the plain "not measured".
+        r.checks = [...again.checks.filter((c) => !(c.level === 'skip' && p.skipped.some((s) => s.id === c.id))), ...p.skipped];
+        if (p === from) {
+          r.facts.bytesRead = p.src.stats?.bytes ?? r.facts.bytesRead;
+          r.facts.requests = p.src.stats?.requests ?? r.facts.requests;
+        }
+        for (const s of p.skipped) log(`${shown(p.input)}: ${s.title.toLowerCase()}: ${s.text}`);
+        log(`${p.input}: ${summaryLine(r.checks)}${r.facts.bytesRead ? `, ${(r.facts.bytesRead / 1048576).toFixed(1)} MB read` : ''} in ${r.ms} ms`);
+      }
+    }
+  } finally {
+    for (const p of later) if (p.src?.close) await p.src.close().catch(() => {});
+  }
+  return missing;
+}
+
+/**
+ * Renditions converted from one source usually carry the same audio encode. The sizes of
+ * thousands of AAC frames match only when the frames do, so a match is measured once.
+ */
+async function audioIdentity(doc) {
+  const t = doc.tracks.find((x) => x.kind === 'audio');
+  const s = t?.samples;
+  if (!s?.count || !s.sizes) return null;
+  const { createHash } = await import('node:crypto');
+  return `${t.codec}|${s.count}|${createHash('sha256').update(new Uint8Array(s.sizes.buffer, s.sizes.byteOffset, s.sizes.byteLength)).digest('hex')}`;
 }
 
 /** PSNR and SSIM of the luma plane against the source scaled to the input's size. */
@@ -323,10 +465,13 @@ const skip = (id, category, title, text) => ({ id, category, level: 'skip', titl
 export async function auditInputs(o, log = () => {}) {
   const results = [];
   const playlists = [];
+  const later = []; // inputs whose loudness is measured once all are open
   let ffmpegMissing = false;
   for (const [index, input] of o.inputs.entries()) {
     const t0 = Date.now();
     let src = null;
+    let deferred = null;
+    let kept = false;
     try {
       src = await openInput(input, o);
       const doc = await openDocument(src);
@@ -342,12 +487,7 @@ export async function auditInputs(o, log = () => {}) {
         measured.decode = d;
         if (!o.measure) res = await auditFile(doc, o.expect, { payloadBudget: budget, measured });
       }
-      if (o.measure) {
-        const l = await measureLoudness(input, o.headers);
-        if (l.error) {
-          if (l.missing) ffmpegMissing = true;
-          skipped.push(skip('loudness', 'Audio', 'Loudness not measured', l.error));
-        } else measured.loudness = l;
+      if (o.measure && !res.unsupported) {
         if (o.source && res.facts.video) {
           const q = await measureQuality(input, o.source, o.headers, res.facts.video.width, res.facts.video.height);
           if (q.error) {
@@ -355,11 +495,8 @@ export async function auditInputs(o, log = () => {}) {
             skipped.push(skip('quality', 'Video', 'Fidelity not measured', q.error));
           } else measured.quality = q;
         }
-        if (Object.keys(measured).length) res = await auditFile(doc, o.expect, { payloadBudget: budget, measured });
-        // A measurement that failed says why, in place of the plain "not measured".
-        res.checks = res.checks.filter((c) => !(c.level === 'skip' && skipped.some((s) => s.id === c.id)));
-        res.checks.push(...skipped);
-        for (const s of skipped) log(`${input}: ${s.title.toLowerCase()}: ${s.text}`);
+        // Loudness waits until every input is open (below); the file keeps its source until then.
+        deferred = { input, doc, src, measured, skipped, budget, id: await audioIdentity(doc), size: src.size ?? doc.size };
       }
       if (res.unsupported && /HLS playlist/i.test(res.unsupported)) {
         const url = isUrl(input) ? input : pathToFileURL(path.resolve(input)).href;
@@ -386,16 +523,20 @@ export async function auditInputs(o, log = () => {}) {
       res.facts.requests = src.stats?.requests ?? null;
       if (o.digest) res.facts.digest = await digests(doc, res.facts);
       results.push(res);
-      log(`${input}: ${summaryLine(res.checks)}${res.facts.bytesRead ? `, ${(res.facts.bytesRead / 1048576).toFixed(1)} MB read` : ''} in ${res.ms} ms`);
+      if (deferred) {
+        later.push({ ...deferred, slot: results.length - 1 });
+        kept = true;
+      } else log(`${input}: ${summaryLine(res.checks)}${res.facts.bytesRead ? `, ${(res.facts.bytesRead / 1048576).toFixed(1)} MB read` : ''} in ${res.ms} ms`);
     } catch (e) {
       const message = String(e?.message ?? e);
       const reason = e?.code === 'NO_RANGE_SUPPORT' ? 'unavailable:no-range' : e?.code === 'ENOENT' ? 'unavailable:missing' : /HTTP 40[34]|HTTP 410/.test(message) ? 'unavailable:missing' : 'error';
       results.push({ input, file: isUrl(input) ? input.split('/').pop() : path.basename(input), error: message, reason, ms: Date.now() - t0, facts: { name: path.basename(input) }, checks: [], item: null });
       log(`${input}: could not be audited: ${message}`);
     } finally {
-      if (src?.close) await src.close().catch(() => {});
+      if (src?.close && !kept) await src.close().catch(() => {});
     }
   }
+  if (later.length) ffmpegMissing = (await measureLoudnessOnce(later, results, o, log)) || ffmpegMissing;
   // Ladders: every input as one, or renditions of one content grouped by folder and name.
   const ladders = [];
   const ok = results.filter((r) => !r.error && r.item);

@@ -199,6 +199,12 @@ standards say. `--json` writes a report ([docs/audit-report.schema.json](docs/au
 the original. The exit code is 2 on a critical finding, 1 on a warning, 3 when an input could not
 be audited.
 
+Loudness (EBU R 128 integrated loudness and true peak) is measured from the audio samples alone:
+Vidscope reads them by byte range and hands them to FFmpeg, so a file on a server costs its audio
+rather than its size. Renditions carrying the same audio encode (the same AAC frames) are measured
+once, from the smallest of them. Audio that cannot be streamed that way (Opus, MPEG-TS) is read
+by FFmpeg in full.
+
 `--decode` decodes every video and audio frame with FFmpeg, single-threaded (with frame threads
 FFmpeg can let a damaged frame through unflagged), and reports each damaged frame with the moment
 it is shown and a jump to its bytes. It finds what no structural check can: a payload damaged
