@@ -204,6 +204,9 @@ code, .mono { font-family: var(--mono); }
 }
 .brand { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .brand .bmark { width: 20px; height: 20px; flex: none; }
+.brand .home { display: inline-flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; border-radius: 6px; padding: 2px 5px; margin: -2px -5px; }
+.brand .home:hover b { color: var(--accent); }
+.brand .home:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .brand b { font-size: 15px; letter-spacing: 0.2px; }
 .brand span { color: var(--text-3); font-size: 12.5px; }
 .filebtn {
