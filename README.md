@@ -36,7 +36,7 @@
 Vidscope maps every byte of a video file to the box, element, field, table entry or media
 frame it belongs to, and explains in plain words what it is for. It classifies every frame,
 charts the bitrate, compares a source with the versions converted from it down to the pixel,
-and audits files and whole bitrate ladders against Apple's HLS authoring specification,
+and audits files, whole bitrate ladders and HLS presentations against Apple's HLS authoring specification,
 RFC 8216, H.264, H.273, ISO 14496-12, EBU R 128 and ITU-R BT.1359.
 
 ## Quick start
@@ -194,14 +194,27 @@ standards say. `--json` writes a report ([docs/audit-report.schema.json](docs/au
 the original. The exit code is 2 on a critical finding, 1 on a warning, 3 when an input could not
 be audited.
 
+An HLS playlist is audited as the presentation players receive. Give the multivariant (or a
+media) playlist, a file or a URL, and Vidscope reads every media playlist behind it, measures the
+size of every segment (HEAD requests, or one-byte range requests), opens a few segments with its
+own parsers, and checks what the playlists declare against what is there: BANDWIDTH against the
+peak segment bit rate as RFC 8216 defines it, AVERAGE-BANDWIDTH, CODECS, RESOLUTION and
+FRAME-RATE against the segments, durations against the target, aligned boundaries, key frames at
+segment starts, I-frame playlists and protocol versions. Signed URLs lose their query in every
+report.
+
+```bash
+node bin/vidscope.js audit "https://cdn.example.com/show/master.m3u8" --md report.md
+```
+
 Segments are judged the way a packager cuts them: at the first key frame at or after each
 multiple of the segment length, as FFmpeg's HLS muxer does. A GOP cut short anywhere in the file
 (a join between the chunks of a chunked encode, a forced key frame) therefore shows up as the
 long segment it causes, and the peak bit rate is that of the busiest segment, as HLS measures
 BANDWIDTH.
 
-What the audit does not do yet: it reads media files, not HLS or DASH playlists, and it checks
-structure and frame headers rather than decoding every frame.
+What the audit does not do yet: it does not read DASH manifests, and it checks structure and
+frame headers rather than decoding every frame.
 
 ## Running it
 

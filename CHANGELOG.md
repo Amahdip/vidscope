@@ -6,6 +6,11 @@ Each entry links to the pull request with the details.
 ## 2026-09-28
 
 ### Added
+- HLS presentations are audited from their playlist: every media playlist, every segment's size
+  and a few segments opened, against BANDWIDTH (the peak segment bit rate), AVERAGE-BANDWIDTH,
+  CODECS, RESOLUTION, FRAME-RATE, target durations, alignment, key frames, I-frame playlists and
+  versions ([#29](https://github.com/Amahdip/vidscope/pull/29)).
+- The logo in the top bar goes back to the start page ([#28](https://github.com/Amahdip/vidscope/pull/28)).
 - A README with the logo, animated demos of the anatomy, Frames, Compare and Audit views,
   and badges; the images are recorded by `scripts/capture/` ([#27](https://github.com/Amahdip/vidscope/pull/27)).
 - A development guide and task skills for coding agents ([#26](https://github.com/Amahdip/vidscope/pull/26)).

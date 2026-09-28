@@ -16,8 +16,10 @@ node bin/vidscope.js audit movie-1080p.mp4 movie-720p.mp4 movie-360p.mp4 --md -
   file costs megabytes, not a download. `--header "K: V"` for URLs that need one.
 - Renditions of one content (`name-720p.mp4`, `name-360p.mp4`) are grouped into a ladder
   automatically; `--ladder` forces one ladder, `--no-ladder` none.
-- Media files only. An HLS playlist or DASH manifest is refused as "not audited" (exit 3);
-  audit the renditions it points at.
+- An HLS playlist (multivariant or media, file or URL) is audited as a presentation: every
+  media playlist, every segment's size, a few segments opened. `--segments <n>` caps the sizes
+  measured per playlist (beyond it they are spread evenly and the peak is a lower bound),
+  `--probes <n>` the segments opened. A DASH manifest is refused as "not audited" (exit 3).
 
 ## What the service intends
 
@@ -47,6 +49,7 @@ were not measured, which is not the same as passing.
 ## Limits to state when they matter
 
 The audit reads container and codec structure and sampled frame headers. It does not decode
-every frame (a corrupt payload with valid structure passes), does not read playlists (declared
-BANDWIDTH, AVERAGE-BANDWIDTH), and cannot judge picture quality without the source. Say so
-rather than implying a clean bill of health.
+every frame (a corrupt payload with valid structure passes), does not read DASH manifests, and
+cannot judge picture quality without the source. For HLS it opens only a few segments per
+playlist: codec, resolution and key-frame checks rest on those. Say so rather than implying a
+clean bill of health.

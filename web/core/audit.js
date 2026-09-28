@@ -16,6 +16,7 @@ import { parseX26x, rateControl } from '../codecs/encoders.js';
 import { checkLevel } from '../codecs/levels.js';
 import { fmtInt, fmtNum, fmtBitrate, fmtDuration, plural } from './util.js';
 import { remedyFor } from './remedies.js';
+import { redact } from './hls.js';
 import { identify } from '../formats/raw/index.js';
 
 /** Where each rule comes from. */
@@ -54,16 +55,17 @@ const HDR_TRANSFERS = { 16: 'PQ (HDR10)', 18: 'HLG' };
 
 const RULES = [];
 const LADDER_RULES = [];
+const PLAYLIST_RULES = [];
 
 /** Register a rule; returns it. Rules run in registration order. */
 export function defineRule(def) {
-  (def.scope === 'ladder' ? LADDER_RULES : RULES).push(def);
+  (def.scope === 'ladder' ? LADDER_RULES : def.scope === 'playlist' ? PLAYLIST_RULES : RULES).push(def);
   return def;
 }
 
 /** Every rule, for documentation and for a rule matrix. */
 export function allRules() {
-  return [...RULES, ...LADDER_RULES].map((r) => ({ id: r.id, scope: r.scope ?? 'file', category: r.category, severity: r.severity, spec: r.spec, clause: r.clause ?? null, title: r.title, remedy: remedyFor(r.id) }));
+  return [...RULES, ...LADDER_RULES, ...PLAYLIST_RULES].map((r) => ({ id: r.id, scope: r.scope ?? 'file', category: r.category, severity: r.severity, spec: r.spec, clause: r.clause ?? null, title: r.title, remedy: remedyFor(r.id) }));
 }
 
 const pass = (title, text, extra) => ({ level: 'pass', title, text, ...extra });
@@ -875,6 +877,347 @@ defineRule({
   },
 });
 
+// ====================================================================== playlists (HLS)
+//
+// Rules over a measured presentation (web/core/hls.js measureHls): what the multivariant and
+// media playlists declare, against the segments they list.
+
+const pctOff = (measured, declared) => `${measured >= declared ? '+' : '−'}${fmtNum(Math.abs(measured / declared - 1) * 100, 1)} %`;
+const listFew = (items, n = 3) => (items.length > n ? `${items.slice(0, n).join('; ')}; and ${items.length - n} more` : items.join('; '));
+
+/** avc1.PPCCLL -> { profile, constraints, level }, or null. */
+function avcParts(codec) {
+  const m = /^avc[13]\.([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(codec ?? '');
+  return m ? { profile: m[1].toLowerCase(), constraints: m[2].toLowerCase(), level: m[3].toLowerCase() } : null;
+}
+
+/** How a declared codec relates to one found in the segments: 'same', 'close' (flags differ) or 'other'. */
+function codecMatch(declared, found) {
+  const d = declared.toLowerCase();
+  const f = found.toLowerCase();
+  if (d === f) return 'same';
+  const a = avcParts(d);
+  const b = avcParts(f);
+  if (a && b) return a.profile === b.profile && a.level === b.level ? 'close' : 'other';
+  return d.split('.')[0] === f.split('.')[0] && d.split('.')[1] === f.split('.')[1] ? 'close' : 'other';
+}
+
+defineRule({
+  id: 'hls-reachable', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'rfc8216', clause: '§6.2.1 every segment a playlist lists MUST be available for download',
+  title: 'Every playlist and segment can be fetched',
+  applies: (p) => p.m.playlists.length > 0,
+  check: (p) => {
+    const bad = [];
+    let sized = 0;
+    let total = 0;
+    for (const pl of p.m.playlists) {
+      if (pl.error) {
+        bad.push(`${pl.label}: ${pl.error}`);
+        continue;
+      }
+      total += pl.segments.length;
+      sized += pl.sized;
+      const failed = pl.segments.filter((s) => s.error);
+      if (failed.length) bad.push(`${pl.label}: ${plural(failed.length, 'segment')} failed (${failed[0].error})`);
+    }
+    const sampled = p.m.playlists.some((pl) => pl.sampled);
+    return bad.length
+      ? fail(listFew(bad), 'A player that meets a missing playlist or segment stalls or switches away; every URI a playlist lists must answer.', { value: bad })
+      : pass(`${plural(p.m.playlists.length, 'playlist')} and ${fmtInt(sized)} segments fetched${sampled ? ` (sizes of ${fmtInt(sized)} of ${fmtInt(total)} segments, spread over each playlist)` : ''}`, 'Every URI answered.', { value: sized });
+  },
+});
+
+defineRule({
+  id: 'hls-bandwidth', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'hlsAuth', clause: '1.27 VOD: the measured peak within 10 % of BANDWIDTH; RFC 8216 §4.3.4.2 BANDWIDTH is the peak segment bit rate',
+  title: 'BANDWIDTH is the measured peak',
+  applies: (p) => p.master && p.withVariant.some(({ v, pl }) => v?.bandwidth && pl.peak),
+  check: (p) => {
+    const off = [];
+    const rows = [];
+    let lowerBound = false;
+    for (const { v, pl } of p.withVariant) {
+      if (!v?.bandwidth || !pl.peak) continue;
+      // A variant with its own audio renditions carries their peak on top of its own.
+      const audio = v.audio ? Math.max(0, ...p.media.filter((m) => m.role === 'rendition' && m.group === v.audio && m.peak).map((m) => m.peak.rate)) : 0;
+      const peak = pl.peak.rate + audio;
+      rows.push({ variant: pl.label, declared: v.bandwidth, peak: Math.round(peak) });
+      lowerBound ||= pl.sampled;
+      const under = peak > v.bandwidth * 1.1;
+      const over = !pl.sampled && peak < v.bandwidth / 1.1;
+      if (under || over) off.push(`${pl.label} declares ${fmtBitrate(v.bandwidth)}, its segments peak at ${fmtBitrate(peak)} (${pctOff(peak, v.bandwidth)})`);
+    }
+    if (!off.length) return pass(`BANDWIDTH within 10 % of the measured peak on ${plural(rows.length, 'variant')}`, `Players choose variants by BANDWIDTH, and it matches what the segments need.${lowerBound ? ' Segment sizes were sampled, so the peaks are lower bounds.' : ''}`, { value: rows });
+    const res = p.vod ? fail : warn;
+    return res(off.join('; '), `BANDWIDTH is what a player plans its network by: a variant whose segments need more than it declares stalls on a link that "should" carry it, and one that declares far more is chosen too rarely. RFC 8216 defines it as the peak segment bit rate (any run of segments lasting 0.5 to 1.5 target durations); Apple requires it within 10 % of the measured peak for VOD.${lowerBound ? ' Sizes were sampled, so the measured peaks are lower bounds.' : ''}`, { value: rows, expected: 'within 10 % of the peak' });
+  },
+});
+
+defineRule({
+  id: 'hls-average-bandwidth', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'hlsAuth', clause: '9.14 AVERAGE-BANDWIDTH MUST be present; 1.26 VOD: within 10 % of the average segment bit rate',
+  title: 'AVERAGE-BANDWIDTH present and right',
+  applies: (p) => p.master && p.withVariant.length > 0,
+  check: (p) => {
+    const missing = p.withVariant.filter(({ v }) => v && v.averageBandwidth == null).map(({ pl }) => pl.label);
+    if (missing.length) return fail(`No AVERAGE-BANDWIDTH on ${missing.join(', ')}`, 'Apple requires it on every variant (RFC 8216 makes it optional): players use it to estimate what a variant costs over time, and without it they fall back to the peak.', { value: missing });
+    const off = [];
+    const rows = [];
+    for (const { v, pl } of p.withVariant) {
+      if (!pl.average || pl.sampled) continue;
+      rows.push({ variant: pl.label, declared: v.averageBandwidth, average: Math.round(pl.average) });
+      if (Math.abs(pl.average - v.averageBandwidth) > v.averageBandwidth * 0.1) off.push(`${pl.label} declares ${fmtBitrate(v.averageBandwidth)}, its segments average ${fmtBitrate(pl.average)} (${pctOff(pl.average, v.averageBandwidth)})`);
+    }
+    return off.length
+      ? (p.vod ? fail : warn)(off.join('; '), 'For VOD, Apple requires the average segment bit rate within 10 % of AVERAGE-BANDWIDTH.', { value: rows, expected: 'within 10 % of the average' })
+      : pass(`AVERAGE-BANDWIDTH on every variant${rows.length ? ', within 10 % of the measured average' : ''}`, rows.length ? 'Declared and measured agree.' : 'Present; the average was not measured on every segment, so it was not compared.', { value: rows });
+  },
+});
+
+defineRule({
+  id: 'hls-codecs', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'hlsAuth', clause: '9.1 CODECS MUST be present; RFC 8216 §4.3.4.2 it lists every format in the segments',
+  title: 'CODECS names what the segments hold',
+  applies: (p) => p.master && p.withVariant.length > 0,
+  check: (p) => {
+    const missing = p.withVariant.filter(({ v }) => v && !v.codecs?.length).map(({ pl }) => pl.label);
+    if (missing.length) return fail(`No CODECS on ${missing.join(', ')}`, 'Without CODECS a player has to download a segment to learn whether it can play the variant at all.', { value: missing });
+    const wrong = [];
+    const close = [];
+    let compared = 0;
+    for (const { v, pl } of p.withVariant) {
+      const found = [...new Set(pl.probes.flatMap((x) => [x.video?.codec, x.audio?.codec]).filter(Boolean))];
+      for (const f of found) {
+        compared++;
+        const best = v.codecs.map((d) => codecMatch(d, f)).sort((a, b) => ['same', 'close', 'other'].indexOf(a) - ['same', 'close', 'other'].indexOf(b))[0] ?? 'other';
+        if (best === 'other') wrong.push(`${pl.label}: segments hold ${f}, CODECS says ${v.codecs.join(',')}`);
+        else if (best === 'close') close.push(`${pl.label}: ${f} in the segments, ${v.codecs.join(',')} declared`);
+      }
+    }
+    if (wrong.length) return fail(listFew(wrong), 'CODECS must list every format in the variant\'s segments; a player that trusts it may pick a variant it cannot decode, or skip one it can.', { value: wrong });
+    if (close.length) return warn(listFew(close), 'The same codec, profile and level, but the declared string differs in its constraint flags from the one the segments carry.', { value: close });
+    return pass(compared ? 'CODECS matches the formats found in the segments' : 'CODECS present on every variant', compared ? 'Every format found in the probed segments is declared.' : 'No segment could be probed to compare.');
+  },
+});
+
+defineRule({
+  id: 'hls-resolution', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'hlsAuth', clause: '9.2 RESOLUTION MUST be present on a variant with video',
+  title: 'RESOLUTION present and matching',
+  applies: (p) => p.master && p.withVariant.some(({ pl }) => p.video(pl)),
+  check: (p) => {
+    const missing = p.withVariant.filter(({ v, pl }) => v && !v.resolution && p.video(pl)).map(({ pl }) => pl.label);
+    if (missing.length) return fail(`No RESOLUTION on ${missing.join(', ')}`, 'Players use RESOLUTION to avoid variants larger than the screen.', { value: missing });
+    const off = p.withVariant.filter(({ v, pl }) => {
+      const vid = p.video(pl);
+      return vid?.width && v.resolution && (vid.width !== v.resolution.width || vid.height !== v.resolution.height);
+    }).map(({ v, pl }) => `${pl.label} declares ${v.resolution.width}×${v.resolution.height}, the segments are ${p.video(pl).width}×${p.video(pl).height}`);
+    return off.length ? warn(listFew(off), 'RESOLUTION should describe the pictures the variant carries.', { value: off }) : pass('RESOLUTION matches the pictures in every variant', 'What the playlist promises is what the segments show.');
+  },
+});
+
+defineRule({
+  id: 'hls-frame-rate', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'hlsAuth', clause: '9.15 FRAME-RATE MUST be present on a variant with video; RFC 8216 §4.3.4.2 the maximum frame rate',
+  title: 'FRAME-RATE present and matching',
+  applies: (p) => p.master && p.withVariant.some(({ pl }) => p.video(pl)),
+  check: (p) => {
+    const missing = p.withVariant.filter(({ v, pl }) => v && v.frameRate == null && p.video(pl)).map(({ pl }) => pl.label);
+    if (missing.length) return fail(`No FRAME-RATE on ${missing.join(', ')}`, 'Players use FRAME-RATE to avoid variants their display or decoder cannot keep up with.', { value: missing });
+    const off = p.withVariant.filter(({ v, pl }) => {
+      const fps = p.video(pl)?.fps;
+      return fps && v.frameRate && Math.abs(fps - v.frameRate) / fps > 0.01;
+    }).map(({ v, pl }) => `${pl.label} declares ${fmtNum(v.frameRate, 3)}, the segments run at ${fmtNum(p.video(pl).fps, 3)} fps`);
+    return off.length ? warn(listFew(off), 'FRAME-RATE should be the frame rate of the video, rounded to three decimals.', { value: off }) : pass('FRAME-RATE matches the video in every variant', 'Declared and measured agree.');
+  },
+});
+
+defineRule({
+  id: 'hls-segment-durations', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'rfc8216', clause: '§4.3.3.1 every EXTINF, rounded, at most TARGETDURATION; Apple 7.7 no segment more than 0.5 s over it',
+  title: 'Segments within the target duration',
+  applies: (p) => p.media.some((pl) => pl.parsed.targetDuration != null && pl.segments.length),
+  check: (p) => {
+    const off = [];
+    let longest = 0;
+    let n = 0;
+    for (const pl of p.media) {
+      const t = pl.parsed.targetDuration;
+      if (t == null) continue;
+      pl.segments.forEach((s, i) => {
+        n++;
+        longest = Math.max(longest, s.duration ?? 0);
+        if (s.duration != null && (Math.round(s.duration) > t || s.duration > t + 0.5)) off.push(`${pl.label} segment ${i + 1}: ${fmtNum(s.duration, 3)} s, target ${t} s`);
+      });
+    }
+    return off.length
+      ? fail(listFew(off), 'A segment longer than the target duration can stall a player that plans its buffering by it.', { value: off.length })
+      : pass(`${fmtInt(n)} segments within their target duration (longest ${fmtNum(longest, 3)} s)`, 'Players can plan their buffering by TARGETDURATION.', { value: longest });
+  },
+});
+
+defineRule({
+  id: 'hls-target-duration', scope: 'playlist', category: 'Delivery', severity: 'warning', spec: 'hlsAuth', clause: '7.5 target durations SHOULD be 6 seconds',
+  title: 'A 6-second target duration',
+  applies: (p) => p.media.some((pl) => pl.parsed.targetDuration != null),
+  check: (p) => {
+    const ts = [...new Set(p.media.filter((pl) => pl.role !== 'iframe').map((pl) => pl.parsed.targetDuration).filter((t) => t != null))];
+    if (ts.every((t) => t === 6)) return pass('Target duration 6 s', 'As Apple recommends.', { value: 6 });
+    if (p.intended?.length && ts.every((t) => p.intended.includes(t))) return pass(`Target duration ${ts.join(', ')} s, as the service intends`, 'Apple recommends 6 s; the service has chosen its own length.', { value: ts });
+    return warn(`Target duration ${ts.join(', ')} s, Apple recommends 6 s`, 'Longer segments mean slower start-up and switching; shorter ones more requests.', { value: ts, expected: 6 });
+  },
+});
+
+defineRule({
+  id: 'hls-same-target', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'rfc8216', clause: '§6.2.4 every media playlist of the variants MUST have the same target duration; Apple 8.2',
+  title: 'One target duration across the variants',
+  applies: (p) => p.media.filter((pl) => pl.role !== 'iframe').length >= 2,
+  check: (p) => {
+    const by = p.media.filter((pl) => pl.role !== 'iframe').map((pl) => `${pl.label} ${pl.parsed.targetDuration ?? '?'} s`);
+    const set = new Set(p.media.filter((pl) => pl.role !== 'iframe').map((pl) => pl.parsed.targetDuration));
+    return set.size === 1 ? pass(`Target duration ${[...set][0]} s in every playlist`, 'Switching keeps the same segment timing.') : fail(`Target durations differ: ${by.join(', ')}`, 'Variants with different target durations cannot be switched between cleanly.', { value: by });
+  },
+});
+
+defineRule({
+  id: 'hls-aligned', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'hlsAuth', clause: '8.22 segment boundaries at the same times in every variant (SHOULD; MUST on AirPlay 2 TVs)',
+  title: 'Segment boundaries aligned across variants',
+  applies: (p) => p.variants.length >= 2,
+  check: (p) => {
+    const edges = (pl) => {
+      let t = 0;
+      return pl.segments.map((s) => (t += s.duration ?? 0));
+    };
+    const ref = p.variants[0];
+    const a = edges(ref);
+    for (const pl of p.variants.slice(1)) {
+      const b = edges(pl);
+      const n = Math.min(a.length, b.length);
+      for (let i = 0; i < n; i++) {
+        if (Math.abs(a[i] - b[i]) > 0.05) return fail(`Segment ${i + 1} ends at ${fmtNum(a[i], 3)} s in ${ref.label} and at ${fmtNum(b[i], 3)} s in ${pl.label}`, 'A player switching variants between segments lands on a different moment in the new one.', { value: i + 1 });
+      }
+      if (a.length !== b.length) return fail(`${ref.label} has ${a.length} segments, ${pl.label} ${b.length}`, 'Variants cut into different segments cannot be switched between at every boundary.');
+    }
+    return pass(`${plural(a.length, 'segment')} with the same boundaries in ${plural(p.variants.length, 'variant')}`, 'A player can switch at any segment boundary.');
+  },
+});
+
+defineRule({
+  id: 'hls-same-duration', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'hlsAuth', clause: '8.3 and 8.7 every playlist covers the same duration of content',
+  title: 'Every playlist covers the same duration',
+  applies: (p) => p.media.filter((pl) => pl.role !== 'iframe').length >= 2,
+  check: (p) => {
+    const d = p.media.filter((pl) => pl.role !== 'iframe').map((pl) => ({ label: pl.label, s: pl.segments.reduce((sum, x) => sum + (x.duration ?? 0), 0) }));
+    const lo = Math.min(...d.map((x) => x.s));
+    const hi = Math.max(...d.map((x) => x.s));
+    return hi - lo <= 0.05 ? pass(`Every playlist lasts ${fmtNum(lo, 3)} s`, 'Audio and video, and every variant, end together.', { value: lo }) : fail(`Playlists last ${d.map((x) => `${x.label} ${fmtNum(x.s, 3)} s`).join(', ')}`, 'Playlists of different lengths end playback early on some variants.', { value: d });
+  },
+});
+
+defineRule({
+  id: 'hls-playlist-type', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'hlsAuth', clause: '8.6 VOD media playlists MUST carry EXT-X-PLAYLIST-TYPE:VOD',
+  title: 'VOD playlists say so',
+  applies: (p) => p.media.some((pl) => pl.parsed.endList),
+  check: (p) => {
+    const missing = p.media.filter((pl) => pl.parsed.endList && pl.parsed.playlistType !== 'VOD').map((pl) => pl.label);
+    return missing.length ? fail(`EXT-X-ENDLIST without EXT-X-PLAYLIST-TYPE:VOD in ${missing.join(', ')}`, 'Without the type a player keeps reloading the playlist as if it could still change.', { value: missing }) : pass('Every finished playlist is marked VOD', 'Players load each playlist once.');
+  },
+});
+
+defineRule({
+  id: 'hls-iframes', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'hlsAuth', clause: '6.1 I-frame playlists MUST be provided for scrubbing and scanning',
+  title: 'I-frame playlists for scrubbing',
+  applies: (p) => !!p.master,
+  check: (p) => (p.master.iframes.length ? pass(`${plural(p.master.iframes.length, 'I-frame playlist')}`, 'Players can show pictures while scrubbing and fast-forward smoothly.', { value: p.master.iframes.length }) : fail('No I-frame playlists (EXT-X-I-FRAME-STREAM-INF)', 'Without them, scrubbing on Apple devices shows no picture and fast-forward has to download whole segments.')),
+});
+
+defineRule({
+  id: 'hls-starts-idr', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'hlsAuth', clause: '7.4 video segments MUST start with an IDR frame',
+  title: 'Segments start with a key frame',
+  applies: (p) => p.media.some((pl) => pl.probes.some((x) => x.video)),
+  check: (p) => {
+    const bad = [];
+    let n = 0;
+    for (const pl of p.media) {
+      for (const x of pl.probes) {
+        if (!x.video) continue;
+        n++;
+        if (x.video.keyFirst === false) bad.push(`${pl.label} segment ${x.index + 1}`);
+      }
+    }
+    return bad.length ? fail(`Not starting with a key frame: ${listFew(bad)}`, 'A segment that does not start with a key frame cannot be decoded on its own: switching or seeking to it shows garbage or waits for the next key frame.', { value: bad }) : pass(`${plural(n, 'probed segment')} each start with a key frame`, 'Every segment decodes on its own.', { value: n });
+  },
+});
+
+defineRule({
+  id: 'hls-independent', scope: 'playlist', category: 'Delivery', severity: 'warning', spec: 'hlsAuth', clause: '9.11 with segments starting at an IDR, EXT-X-INDEPENDENT-SEGMENTS SHOULD be in the multivariant playlist',
+  title: 'Independent segments declared',
+  applies: (p) => p.master && p.media.some((pl) => pl.probes.some((x) => x.video)) && p.media.every((pl) => pl.probes.every((x) => !x.video || x.video.keyFirst !== false)),
+  check: (p) => (p.master.independentSegments ? pass('EXT-X-INDEPENDENT-SEGMENTS declared', 'Players may start and switch at any segment without looking further back.') : warn('No EXT-X-INDEPENDENT-SEGMENTS, though the segments start with key frames', 'Declaring it lets players switch at any segment without first reading the previous one.')),
+});
+
+defineRule({
+  id: 'hls-version', scope: 'playlist', category: 'Delivery', severity: 'critical', spec: 'rfc8216', clause: '§7 EXT-X-VERSION MUST cover what the playlist uses; PROGRAM-ID was removed in version 6',
+  title: 'EXT-X-VERSION matches the tags used',
+  applies: (p) => p.m.playlists.some((pl) => pl.parsed) || !!p.master,
+  check: (p) => {
+    const bad = [];
+    const all = [...(p.master ? [{ label: 'multivariant playlist', parsed: p.master }] : []), ...p.m.playlists.filter((pl) => pl.parsed)];
+    for (const { label, parsed } of all) {
+      const v = parsed.version ?? 1;
+      if (v < parsed.needsVersion) bad.push(`${label}: version ${v}, its tags need ${parsed.needsVersion}`);
+      if (parsed.programId && v >= 6) bad.push(`${label}: PROGRAM-ID at version ${v}`);
+      if (parsed.allowCache && v >= 7) bad.push(`${label}: EXT-X-ALLOW-CACHE at version ${v}`);
+    }
+    return bad.length ? fail(listFew(bad), 'A client reads a playlist by the protocol version it declares; one that uses newer tags than it declares, or tags its version removed, can be misread.', { value: bad }) : pass('Every playlist declares a version that covers its tags', p.master?.programId ? 'PROGRAM-ID is still written; it is legal at this version, and was removed in version 6.' : 'Nothing is used that the declared version does not allow.');
+  },
+});
+
+/**
+ * Audit a presentation measured by measureHls (web/core/hls.js): the multivariant playlist's
+ * declarations against the media playlists and the segments. Returns { checks, facts }.
+ */
+export function auditPlaylist(m, expect = {}) {
+  const ex = { ...DEFAULT_EXPECT, ...expect };
+  const master = m.master;
+  const media = m.playlists.filter((pl) => pl.parsed && !pl.error);
+  const variants = media.filter((pl) => pl.role === 'variant');
+  const video = (pl) => pl.probes.find((x) => x.video)?.video ?? null;
+  const p = {
+    m, ex, master, media, variants, video,
+    intended: expect.segments ?? null, // the service's own segment lengths, not the defaults
+    withVariant: variants.map((pl) => ({ pl, v: master && pl.variant != null ? master.variants[pl.variant] : null })).filter(({ v }) => !master || v),
+    vod: variants.length > 0 && variants.every((pl) => pl.parsed.playlistType === 'VOD' || pl.parsed.endList),
+  };
+  const checks = [];
+  for (const r of PLAYLIST_RULES) {
+    let res = null;
+    try {
+      if (r.applies(p)) res = r.check(p);
+    } catch (e) {
+      res = { level: 'skip', title: `${r.title}: not checked`, text: String(e?.message ?? e) };
+    }
+    if (res) checks.push(finish(r, res, ex.overlay));
+  }
+  const facts = {
+    url: redact(m.url),
+    requests: m.requests,
+    kind: master ? 'multivariant' : 'media',
+    variants: m.playlists.map((pl) => {
+      const v = master && pl.role === 'variant' && pl.variant != null ? master.variants[pl.variant] : null;
+      const vid = video(pl);
+      return {
+        label: pl.label, role: pl.role, url: redact(pl.url), error: pl.error ?? null,
+        declared: v ? { bandwidth: v.bandwidth, averageBandwidth: v.averageBandwidth, codecs: v.codecs, resolution: v.resolution, frameRate: v.frameRate } : null,
+        measured: {
+          segments: pl.segments.length, sized: pl.sized, sampled: pl.sampled,
+          targetDuration: pl.parsed?.targetDuration ?? null,
+          duration: pl.segments.reduce((sum, s) => sum + (s.duration ?? 0), 0),
+          peak: pl.peak ? Math.round(pl.peak.rate) : null,
+          average: pl.average ? Math.round(pl.average) : null,
+          video: vid ? { codec: vid.codec, width: vid.width, height: vid.height, fps: vid.fps } : null,
+          audio: pl.probes.find((x) => x.audio)?.audio ?? null,
+        },
+      };
+    }),
+  };
+  return { checks, facts };
+}
+
 // ====================================================================== running the rules
 
 /** "44.1 kHz", "48,000 Hz" or "48000 / s" -> hertz; the number before the unit, nothing else. */
@@ -1216,13 +1559,14 @@ export function tally(checks) {
 }
 
 /** A Markdown report of the audited files and their ladders (one, several, or none). */
-export function auditMarkdown(results, ladders = null, { title = 'Vidscope audit' } = {}) {
+export function auditMarkdown(results, ladders = null, { title = 'Vidscope audit', playlists = [] } = {}) {
   const list = Array.isArray(ladders) ? ladders : ladders ? [ladders] : [];
   const lines = [`# ${title}`, ''];
   const mark = { pass: '✓', warn: '⚠', fail: '✗', info: 'ℹ', skip: '–' };
-  const all = [...results.flatMap((r) => r.checks), ...list.flatMap((l) => l.checks ?? [])];
+  const all = [...results.flatMap((r) => r.checks), ...list.flatMap((l) => l.checks ?? []), ...playlists.flatMap((p) => p.checks ?? [])];
   const t = tally(all);
-  lines.push(`${plural(results.length, 'file')}: ${t.fail} failed (${t.critical} critical), ${t.warn} warnings, ${t.pass} passed${t.compliance !== null ? `; ${fmtNum(t.compliance * 100, 1)} % of the checks with a verdict pass` : ''}${t.skip ? `; ${plural(t.skip, 'check')} not run (see "not measured")` : ''}.`, '');
+  const counted = [results.length ? plural(results.length, 'file') : null, playlists.length ? plural(playlists.length, 'playlist') : null].filter(Boolean).join(' and ') || 'nothing';
+  lines.push(`${counted}: ${t.fail} failed (${t.critical} critical), ${t.warn} warnings, ${t.pass} passed${t.compliance !== null ? `; ${fmtNum(t.compliance * 100, 1)} % of the checks with a verdict pass` : ''}${t.skip ? `; ${plural(t.skip, 'check')} not run (see "not measured")` : ''}.`, '');
   const line = (c) => `- ${mark[c.level]} **${c.title}** — ${c.text}${c.remedy ? `\n  - fix: ${c.remedy.fix}` : ''} _(${SPECS[c.spec]?.name ?? c.spec}${c.clause ? `, ${c.clause}` : ''})_`;
   for (const l of list) {
     if (!l.checks?.length) continue;
@@ -1231,6 +1575,22 @@ export function auditMarkdown(results, ladders = null, { title = 'Vidscope audit
     lines.push('');
   }
   const order = ['fail', 'warn', 'pass', 'info', 'skip'];
+  for (const p of playlists) {
+    lines.push(`## Playlist: ${p.file ?? p.facts?.url}`, '');
+    const rows = (p.facts?.variants ?? []).filter((v) => v.role === 'variant');
+    if (rows.length) {
+      lines.push('| Variant | BANDWIDTH | measured peak | AVERAGE-BANDWIDTH | measured average | segments | target |', '| --- | --- | --- | --- | --- | --- | --- |');
+      for (const v of rows) {
+        const d = v.declared ?? {};
+        const m = v.measured ?? {};
+        const rate = (x) => (x == null ? '—' : fmtBitrate(x));
+        lines.push(`| ${v.label} | ${rate(d.bandwidth)} | ${rate(m.peak)}${m.sampled ? ' (sampled)' : ''} | ${rate(d.averageBandwidth)} | ${rate(m.average)} | ${m.sized} of ${m.segments} | ${m.targetDuration ?? '—'} s |`);
+      }
+      lines.push('');
+    }
+    for (const lvl of order) for (const c of p.checks.filter((x) => x.level === lvl)) lines.push(line(c));
+    lines.push('');
+  }
   for (const r of results) {
     const f = r.facts;
     lines.push(`## ${r.file}`, '');
@@ -1290,8 +1650,8 @@ export function mergeExpect(a, b) {
  * The JSON report (docs/audit-report.schema.json) of audited files and ladders. Runs in the
  * browser and in Node; `version` and `generated` come from the caller.
  */
-export function buildReport({ results, ladders = [] }, { expect = {}, version = null, generated = new Date().toISOString() } = {}) {
-  const all = [...results.flatMap((r) => r.checks ?? []), ...ladders.flatMap((l) => l.checks ?? [])];
+export function buildReport({ results, ladders = [], playlists = [] }, { expect = {}, version = null, generated = new Date().toISOString() } = {}) {
+  const all = [...results.flatMap((r) => r.checks ?? []), ...ladders.flatMap((l) => l.checks ?? []), ...playlists.flatMap((p) => p.checks ?? [])];
   return {
     tool: { name: 'vidscope', command: 'audit', version },
     generated,
@@ -1299,6 +1659,7 @@ export function buildReport({ results, ladders = [] }, { expect = {}, version = 
     summary: { ...tally(all), errors: results.filter((r) => r.error).length },
     files: results.map((r) => ({ input: r.input, file: r.file, ms: r.ms, ...(r.error ? { error: r.error, reason: r.reason } : {}), facts: r.facts, checks: r.checks ?? [] })),
     ladders: ladders.map((l) => ({ files: l.files, inputs: l.inputs, checks: l.checks })),
+    playlists: playlists.map((p) => ({ input: redact(p.input), file: p.file, ms: p.ms, facts: p.facts, checks: p.checks })),
     specs: SPECS,
   };
 }
@@ -1322,6 +1683,7 @@ export function toSarif(report, { uriFor = (input) => input } = {}) {
   };
   for (const f of report.files) for (const c of f.checks) emit([f.input ?? f.file], c);
   for (const l of report.ladders) for (const c of l.checks) emit(l.inputs ?? l.files, c);
+  for (const p of report.playlists ?? []) for (const c of p.checks) emit([p.input], c);
   return {
     version: '2.1.0',
     $schema: 'https://json.schemastore.org/sarif-2.1.0.json',

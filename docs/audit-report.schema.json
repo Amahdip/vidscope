@@ -465,6 +465,139 @@
         }
       }
     },
+    "playlists": {
+      "type": "array",
+      "description": "HLS presentations audited from their multivariant or media playlist: what the playlists declare against the segments behind them",
+      "items": {
+        "type": "object",
+        "required": [
+          "input",
+          "facts",
+          "checks"
+        ],
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "the playlist path or URL, with any query (signature) replaced by ?…"
+          },
+          "file": {
+            "type": "string"
+          },
+          "ms": {
+            "type": "number"
+          },
+          "facts": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "requests": {
+                "type": "integer",
+                "description": "HTTP requests made to measure the presentation"
+              },
+              "kind": {
+                "enum": [
+                  "multivariant",
+                  "media"
+                ]
+              },
+              "variants": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "enum": [
+                        "variant",
+                        "rendition",
+                        "iframe"
+                      ]
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "declared": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "BANDWIDTH, AVERAGE-BANDWIDTH, CODECS, RESOLUTION and FRAME-RATE of the multivariant playlist"
+                    },
+                    "measured": {
+                      "type": "object",
+                      "properties": {
+                        "segments": {
+                          "type": "integer"
+                        },
+                        "sized": {
+                          "type": "integer",
+                          "description": "segments whose size was measured"
+                        },
+                        "sampled": {
+                          "type": "boolean",
+                          "description": "sizes were measured on a spread of segments, so the peak is a lower bound"
+                        },
+                        "targetDuration": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "duration": {
+                          "type": "number"
+                        },
+                        "peak": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "description": "the peak segment bit rate (RFC 8216 §4.1), bits per second"
+                        },
+                        "average": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "description": "the average segment bit rate (RFC 8216 §4.1), bits per second"
+                        },
+                        "video": {
+                          "type": [
+                            "object",
+                            "null"
+                          ]
+                        },
+                        "audio": {
+                          "type": [
+                            "object",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/check"
+            }
+          }
+        }
+      }
+    },
     "specs": {
       "type": "object",
       "additionalProperties": {
