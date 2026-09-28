@@ -6,6 +6,11 @@ Each entry links to the pull request with the details.
 ## 2026-09-28
 
 ### Added
+- A README with the logo, animated demos of the anatomy, Frames, Compare and Audit views,
+  and badges; the images are recorded by `scripts/capture/` ([#27](https://github.com/Amahdip/vidscope/pull/27)).
+- A development guide and task skills for coding agents ([#26](https://github.com/Amahdip/vidscope/pull/26)).
+- A contribution guide, security policy, code of conduct, issue forms, a pull request template
+  and CI that runs the tests with FFmpeg 8.1 ([#25](https://github.com/Amahdip/vidscope/pull/25)).
 - A logo, used by the favicon, the top bar and the README ([#24](https://github.com/Amahdip/vidscope/pull/24)).
 - `vidscope audit`: files and ladders judged against Apple's HLS authoring specification,
   RFC 8216, H.264, H.273, ISO 14496-12, EBU R 128 and ITU-R BT.1359, with severities, byte
