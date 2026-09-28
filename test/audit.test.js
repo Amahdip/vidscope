@@ -355,6 +355,7 @@ test('verdicts follow the strength of the Apple item they cite', { skip: !haveFf
     fps120: clip('fps120.mp4', x264(), 'testsrc2=s=320x180:r=120:d=1'),
     gop5: clip('gop5.mp4', x264('-g', '125', '-keyint_min', '125', '-sc_threshold', '0'), 'testsrc2=s=160x90:r=25:d=11'),
     av1: clip('av1.mp4', ['-c:v', 'libsvtav1', '-preset', '12', '-pix_fmt', 'yuv420p']),
+    mpeg4: clip('mpeg4.mp4', ['-c:v', 'mpeg4']),
     surround: makeFixture('surround.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=160x90:r=25:d=1', '-f', 'lavfi', '-i', 'sine=d=1', ...x264(), '-c:a', 'aac', '-ac', '6']),
   };
   try {
@@ -364,6 +365,7 @@ test('verdicts follow the strength of the Apple item they cite', { skip: !haveFf
     assert.equal(at('main', 'profile').level, 'warn');
     assert.equal(at('main', 'profile').severity, 'WARNING');
     assert.equal(at('high10', 'profile').severity, 'CRITICAL');
+    assert.equal(at('high10', 'depth').severity, 'CRITICAL', '10-bit H.264 is beyond High Profile (1.3b)');
     // 1.3b MUST: at most Level 5.2; 1.11 SHOULD: no higher level than needed.
     assert.equal(at('l42', 'level-cap').level, 'pass', 'level 4.2 is within Apple\'s 5.2');
     assert.equal(at('l61', 'level-cap').severity, 'CRITICAL');
@@ -380,6 +382,7 @@ test('verdicts follow the strength of the Apple item they cite', { skip: !haveFf
     assert.equal(byId((await auditPath(fx.gop5.file, { gop: 5 })).checks, 'gop-length').level, 'pass', 'a service that intends 5 s is judged on its intent');
     // 1.1: AV1 is an Apple codec. 9.6 MUST: multichannel audio in separate audio streams.
     assert.equal(at('av1', 'codec').level, 'pass');
+    assert.equal(at('mpeg4', 'codec').severity, 'CRITICAL', 'a codec outside 1.1 breaks a MUST');
     assert.equal(at('surround', 'audio-channels').severity, 'CRITICAL');
   } finally {
     for (const f of Object.values(fx)) f.cleanup();
