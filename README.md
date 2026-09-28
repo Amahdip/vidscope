@@ -168,6 +168,11 @@ takes) adds what a service intends on top of the standards. The report copies as
 saves as JSON or SARIF. In **Compare**, the renditions of one video get a ladder audit: a
 conformance matrix of rules against renditions and the checks across them.
 
+**Audit standards**, on the start page and next to every report, opens the standards register
+(`standards.html`): every rule the audit runs, the standard and item it cites with a link to the
+official text, what the source says and what the audit checks, and how each citation was
+verified. It is built from the engine's own rule list, so it cannot miss a rule.
+
 Served next to an audit server that answers under `api/audit/` (a separate service that knows a
 platform's registry and storage), the viewer also offers **Check a conversion**: type a video id
 or a rendition URL, get the whole ladder audited, and open any rendition through the server's

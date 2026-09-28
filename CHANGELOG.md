@@ -9,6 +9,10 @@ Each entry links to the pull request with the details.
 - `vidscope audit --measure` reads only the audio samples for loudness and measures renditions
   that share an audio encode once, from the smallest file; over HTTP a ladder costs a few MB
   instead of every rendition in full ([#35](https://github.com/Amahdip/vidscope/pull/35)).
+- An "Audit standards" button on the start page opens the standards register ([#34](https://github.com/Amahdip/vidscope/pull/34)).
+- The standards register reads in Farsi as well as English, right to left, with MUST and SHOULD
+  kept apart in the wording; the build stops when an English note changes without its Farsi
+  ([#33](https://github.com/Amahdip/vidscope/pull/33)).
 - `vidscope audit --decode` decodes every frame with FFmpeg and reports damaged frames with the
   moment they are shown and their bytes; the conversion check page offers it as "Decode every
   frame" ([#30](https://github.com/Amahdip/vidscope/pull/30)).
