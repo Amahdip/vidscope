@@ -28,10 +28,10 @@ export const SPECS = {
   h273: { name: 'ITU-T H.273, colour description', url: 'https://www.itu.int/rec/T-REC-H.273' },
   isobmff: { name: 'ISO/IEC 14496-12, ISO base media file format', url: 'https://www.iso.org/standard/83102.html' },
   cmaf: { name: 'ISO/IEC 23000-19, CMAF', url: 'https://www.iso.org/standard/85623.html' },
-  priming: { name: 'Apple: audio priming, handling encoder delay in AAC', url: 'https://developer.apple.com/documentation/quicktime-file-format/audio_priming_-_handling_encoder_delay_in_aac' },
-  bt1359: { name: 'ITU-R BT.1359, relative timing of sound and vision', url: 'https://www.itu.int/rec/R-REC-BT.1359' },
-  r128: { name: 'EBU R 128, loudness normalisation', url: 'https://tech.ebu.ch/publications/r128' },
-  practice: { name: 'Common encoding practice (Apple ladder, Netflix, Streaming Learning Center)', url: 'https://streaminglearningcenter.com' },
+  priming: { name: 'Apple TN2258, AAC audio: encoder delay and synchronization', url: 'https://developer.apple.com/library/archive/technotes/tn2258/_index.html' },
+  bt1359: { name: 'ITU-R BT.1359-1, relative timing of sound and vision', url: 'https://www.itu.int/rec/R-REC-BT.1359' },
+  r128: { name: 'EBU R 128 (2023) and R 128 s2, loudness normalisation', url: 'https://tech.ebu.ch/publications/r128' },
+  practice: { name: 'Common encoding practice, not a standard', url: 'https://streaminglearningcenter.com' },
 };
 
 /**
@@ -73,7 +73,7 @@ const info = (title, text, extra) => ({ level: 'info', title, text, ...extra });
 // ====================================================================== container
 
 defineRule({
-  id: 'fast-start', category: 'Container', severity: 'critical', spec: 'hlsAuth', clause: 'progressive playback; ISO 14496-12 §8.1',
+  id: 'fast-start', category: 'Container', severity: 'critical', spec: 'practice', clause: 'progressive download: the index (moov) before the media data, as ffmpeg -movflags +faststart writes it',
   title: 'The movie box comes before the media data',
   applies: (c) => c.mp4 && c.mp4.moov && c.mp4.mdat && !c.mp4.moof,
   check: (c) => {
@@ -85,7 +85,7 @@ defineRule({
 });
 
 defineRule({
-  id: 'interleaved', category: 'Container', severity: 'warning', spec: 'isobmff', clause: '§8.7 chunk interleaving',
+  id: 'interleaved', category: 'Container', severity: 'warning', spec: 'practice', clause: 'progressive download: audio and video chunks interleaved',
   title: 'Audio and video chunks alternate',
   applies: (c) => !!c.insight(/^(Poorly interleaved|Interleaved)/),
   check: (c) => {
@@ -95,7 +95,7 @@ defineRule({
 });
 
 defineRule({
-  id: 'edit-list', category: 'Container', severity: 'warning', spec: 'isobmff', clause: '§8.6.6 edit lists',
+  id: 'edit-list', category: 'Container', severity: 'warning', spec: 'isobmff', clause: '§8.6.6 edit list box',
   title: 'Edit lists are simple',
   applies: (c) => c.insights.some((i) => /: \d+ edits$/.test(i.title)),
   check: (c) => {
@@ -116,21 +116,21 @@ defineRule({
 });
 
 defineRule({
-  id: 'one-video-track', category: 'Container', severity: 'critical', spec: 'hlsAuth', clause: 'one video track per rendition',
+  id: 'one-video-track', category: 'Container', severity: 'critical', spec: 'practice', clause: 'one video track per rendition file',
   title: 'Exactly one video track',
   applies: () => true,
   check: (c) => (c.videos.length === 1 ? pass('One video track', 'As a rendition should.') : c.videos.length ? warn(`${c.videos.length} video tracks`, 'A rendition carries exactly one video track; players pick the first and ignore the rest.') : fail('No video track', 'Nothing to play.')),
 });
 
 defineRule({
-  id: 'has-audio', category: 'Container', severity: 'critical', spec: 'hlsAuth', clause: 'audio in every variant',
+  id: 'has-audio', category: 'Container', severity: 'critical', spec: 'practice', clause: 'audio in every rendition, when the service requires it',
   title: 'Audio is present',
   applies: (c) => c.audios.length === 0,
   check: (c) => (c.ex.audio?.required ? fail('No audio track', 'The service expects every rendition to carry audio.') : info('No audio track', 'A silent rendition; sources without sound produce these.')),
 });
 
 defineRule({
-  id: 'track-durations', category: 'Container', severity: 'warning', spec: 'hlsAuth', clause: 'variant consistency',
+  id: 'track-durations', category: 'Container', severity: 'warning', spec: 'hlsAuth', clause: '8.3 audio and video cover the same duration (applied to the tracks of one file)',
   title: 'Video and audio are the same length',
   applies: (c) => c.v && c.a && c.v.duration > 0 && c.a.duration > 0,
   check: (c) => {
@@ -144,21 +144,21 @@ defineRule({
 // ====================================================================== video
 
 defineRule({
-  id: 'codec', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.1 video codecs',
+  id: 'codec', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.1 H.264, HEVC, Dolby Vision or AV1',
   title: 'An HLS video codec',
   applies: (c) => !!c.v,
-  check: (c) => (['avc', 'hevc'].includes(c.vi.family) ? pass(videoCodecName(c.it), 'Decodable by every HLS client.') : warn(`${videoCodecName(c.it)}: not an HLS codec for Apple devices`, 'Apple clients play H.264 and HEVC; other codecs need separate renditions.')),
+  check: (c) => (['avc', 'hevc', 'av1'].includes(c.vi.family) ? pass(videoCodecName(c.it), c.vi.family === 'av1' ? 'An HLS codec for Apple devices, in fMP4, on devices that decode AV1.' : 'An HLS codec every Apple device decodes.') : warn(`${videoCodecName(c.it)}: not an HLS codec for Apple devices`, 'Apple devices play H.264, HEVC (and Dolby Vision) and AV1; other codecs need separate renditions.')),
 });
 
 defineRule({
-  id: 'profile', category: 'Video', severity: 'critical', spec: 'hlsAuth', clause: '1.3 H.264 profiles',
+  id: 'profile', category: 'Video', severity: 'critical', spec: 'hlsAuth', clause: '1.3b at most High Profile (MUST); 1.4 High in preference to Main or Baseline (SHOULD)',
   title: 'A supported H.264 profile',
   applies: (c) => c.vi.family === 'avc' && c.vi.profile !== undefined,
   check: (c) => {
     const p = c.vi.profile;
-    if (p === 77 || p === 100) return pass(c.vi.profileName, 'Main and High are the profiles the specification allows for HD.', { offset: c.entryOffset });
-    if (p === 66) return warn(c.vi.profileName, 'Baseline suits old phones only; Main or High decodes everywhere and compresses better.', { offset: c.entryOffset });
-    return fail(c.vi.profileName, 'Only Baseline, Main and High profile are decoded by HLS clients (High 10 and 4:2:2 are not).', { offset: c.entryOffset });
+    if (p === 100) return pass(c.vi.profileName, 'High Profile, as Apple recommends.', { offset: c.entryOffset });
+    if (p === 77 || p === 66) return warn(`${c.vi.profileName}: Apple recommends High`, 'Every device that decodes Main or Baseline also decodes High, and High compresses better (8×8 transforms, better entropy coding), so Apple asks for High in preference to Main or Baseline.', { offset: c.entryOffset });
+    return fail(c.vi.profileName, 'Apple devices decode H.264 up to High Profile; High 10, 4:2:2 and 4:4:4 profiles are beyond it.', { offset: c.entryOffset });
   },
 });
 
@@ -186,14 +186,14 @@ defineRule({
 });
 
 defineRule({
-  id: 'level-minimal', category: 'Video', severity: 'info', spec: 'h264', clause: 'Annex A; device capability gating',
+  id: 'level-minimal', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.11 no higher level than the resolution and frame rate need',
   title: 'The level is the lowest that fits',
   applies: (c) => c.lvl?.signalled && c.lvl.lowest && !c.lvl.unconstrained,
   check: (c) => {
     const name = c.lvl.signalled.name;
     const where = LEVEL_SPEC[c.vi.family] ?? LEVEL_SPEC.avc;
-    if (c.lvl.lowest.name === name) return pass(`Level ${name} is the lowest that fits`, 'No device is shut out needlessly.', { value: name, ...where });
-    return info(`Level ${name} signalled, ${c.lvl.lowest.name} would do`, 'Devices refuse streams above the level they decode; a higher level than needed shuts some out.', { value: name, expected: c.lvl.lowest.name, offset: c.entryOffset, ...where });
+    if (c.lvl.lowest.name === name) return pass(`Level ${name} is the lowest that fits`, 'No device is shut out needlessly.', { value: name });
+    return warn(`Level ${name} signalled, ${c.lvl.lowest.name} would do`, `Devices refuse streams above the level they decode; a higher level than needed shuts some out. The lowest level comes from ${where.clause ?? 'the level tables'}.`, { value: name, expected: c.lvl.lowest.name, offset: c.entryOffset });
   },
 });
 
@@ -215,21 +215,21 @@ defineRule({
 });
 
 defineRule({
-  id: 'level-cap', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.4 H.264 up to level 4.2',
-  title: 'H.264 level at most 4.2',
+  id: 'level-cap', category: 'Video', severity: 'critical', spec: 'hlsAuth', clause: '1.3b H.264 at most High Profile, Level 5.2',
+  title: 'H.264 level at most 5.2',
   applies: (c) => c.vi.family === 'avc' && c.vi.level !== undefined,
-  check: (c) => (c.vi.level <= 42 ? pass(`Level ${c.lvl?.signalled?.name ?? c.vi.level / 10}`, 'Within what Apple devices must decode.') : warn(`Level ${c.vi.level / 10} is above 4.2`, 'Apple devices are only required to decode H.264 up to level 4.2 (1080p60).', { offset: c.entryOffset })),
+  check: (c) => (c.vi.level <= 52 ? pass(`Level ${c.lvl?.signalled?.name ?? c.vi.level / 10}`, c.vi.level <= 41 ? 'Within Apple\'s limit (5.2), and within 4.1, the level Apple asks some variants to keep to for the widest reach.' : 'Within Apple\'s limit (5.2); keep some variants at 4.1 or below for the widest reach (see the ladder\'s levels).', { value: c.vi.level / 10 }) : fail(`Level ${c.vi.level / 10} is above 5.2`, 'Apple devices decode H.264 up to High Profile, Level 5.2.', { value: c.vi.level / 10, expected: '≤ 5.2', offset: c.entryOffset })),
 });
 
 defineRule({
-  id: 'even-size', category: 'Video', severity: 'critical', spec: 'h264', clause: '4:2:0 chroma',
+  id: 'even-size', category: 'Video', severity: 'critical', spec: 'h264', clause: '7.4.2.1.1 frame cropping: 4:2:0 crops in steps of two samples',
   title: 'Even picture dimensions',
   applies: (c) => c.vi.width && c.vi.height,
   check: (c) => (c.vi.width % 2 === 0 && c.vi.height % 2 === 0 ? pass(`${c.vi.width}×${c.vi.height}`, 'Even dimensions, as 4:2:0 chroma requires.') : fail(`${c.vi.width}×${c.vi.height}: odd dimension`, 'Odd dimensions cannot be represented in 4:2:0 without cropping.')),
 });
 
 defineRule({
-  id: 'square-pixels', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.9 pixel aspect',
+  id: 'square-pixels', category: 'Video', severity: 'warning', spec: 'practice', clause: 'square pixels (sample aspect 1:1) in streaming renditions',
   title: 'Square pixels',
   applies: (c) => Array.isArray(c.vi.sps?.vui?.sar),
   check: (c) => {
@@ -239,11 +239,12 @@ defineRule({
 });
 
 defineRule({
-  id: 'fps-range', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.7 frame rate',
+  id: 'fps-range', category: 'Video', severity: 'critical', spec: 'hlsAuth', clause: '1.19 no frame rate above 60 fps (SHALL NOT); the service\'s range',
   title: 'Frame rate within the ladder range',
   applies: (c) => !!c.it.fps,
   check: (c) => {
     const fps = c.it.fps;
+    if (fps > 60.01) return fail(`${fmtNum(fps, 3)} fps, above 60`, 'Apple devices do not take frame rates above 60 fps.', { value: fps, expected: '≤ 60' });
     if (c.ex.fpsMax && fps > c.ex.fpsMax + 0.01) return warn(`${fmtNum(fps, 3)} fps, above ${c.ex.fpsMax}`, 'Frame rates above the ladder maximum cost bits and decoder capability for no visible gain.', { value: fps, expected: `≤ ${c.ex.fpsMax}` });
     if (c.ex.fpsMin && fps < c.ex.fpsMin) return warn(`${fmtNum(fps, 3)} fps, below ${c.ex.fpsMin}`, 'Very low frame rates play as a slideshow.', { value: fps, expected: `≥ ${c.ex.fpsMin}` });
     return pass(`${fmtNum(fps, 3)} fps`, 'Within the expected range.', { value: fps });
@@ -251,14 +252,14 @@ defineRule({
 });
 
 defineRule({
-  id: 'fps-constant', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.7 constant frame rate',
+  id: 'fps-constant', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.18 frame rates; 8.14 a frame-rate change MUST be marked as a discontinuity',
   title: 'Constant frame rate',
   applies: (c) => !!c.v && c.v.vfr !== undefined,
   check: (c) => (c.v.vfr ? warn('Variable frame rate', 'Renditions should have a constant frame rate; variable timing breaks segment alignment and the FRAME-RATE attribute.') : pass('Constant frame rate', 'Every frame lasts the same time.')),
 });
 
 defineRule({
-  id: 'gop-fixed', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.8 key frames at a fixed interval',
+  id: 'gop-fixed', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '7.4 segments start with an IDR; 7.6 segments of a nominal duration',
   title: 'A fixed key-frame interval',
   applies: (c) => c.gop && c.gop.count >= 2,
   check: (c) => {
@@ -278,7 +279,7 @@ defineRule({
 });
 
 defineRule({
-  id: 'gop-length', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.8 key frame every 2 s',
+  id: 'gop-length', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.13 key frames (IDRs) every two seconds',
   title: 'The key-frame interval the service intends',
   applies: (c) => c.gop && c.gop.count >= 2,
   check: (c) => {
@@ -288,27 +289,27 @@ defineRule({
       const off = Math.abs(sec - c.ex.gop);
       return (off <= 0.05 ? pass : fail)(`Key-frame interval ${fmtNum(sec, 3)} s, expected ${c.ex.gop} s`, off <= 0.05 ? 'As the service intends.' : 'The interval does not match the ladder contract.', { value: sec, expected: c.ex.gop });
     }
-    if (sec > 2.05) return info(`Key-frame interval ${fmtNum(sec, 2)} s`, 'Apple recommends a key frame every 2 s so that 6 s segments can be cut and switching stays quick; longer intervals mean longer segments and slower start-up.', { value: sec });
+    if (sec > 2.05) return warn(`Key-frame interval ${fmtNum(sec, 2)} s, Apple recommends 2 s`, 'Apple asks for a key frame every 2 s so that 6 s segments can be cut and switching stays quick; longer intervals mean longer segments and slower start-up.', { value: sec, expected: 2 });
     return pass(`Key-frame interval ${fmtNum(sec, 2)} s`, 'Within Apple\'s recommendation.', { value: sec });
   },
 });
 
 defineRule({
-  id: 'gop-max', category: 'Video', severity: 'critical', spec: 'rfc8216', clause: '§3.1 segments cut at key frames',
+  id: 'gop-max', category: 'Video', severity: 'critical', spec: 'hlsAuth', clause: '7.4 segments start with an IDR; 7.7 no segment more than 0.5 s over the target duration',
   title: 'No key-frame interval longer than allowed',
   applies: (c) => c.gop && c.gop.count >= 2 && c.ex.gopMax,
   check: (c) => (c.gop.maxSeconds <= c.ex.gopMax + 0.05 ? pass(`Longest interval ${fmtNum(c.gop.maxSeconds, 2)} s`, 'Every segment can be cut on time.', { value: c.gop.maxSeconds }) : fail(`Longest key-frame interval ${fmtNum(c.gop.maxSeconds, 2)} s, allowed ${c.ex.gopMax} s`, 'A packager cannot cut a segment inside a GOP.', { value: c.gop.maxSeconds, expected: c.ex.gopMax, offset: c.gopOffset(c.gop.maxSeconds) })),
 });
 
 defineRule({
-  id: 'closed-gop', category: 'Video', severity: 'warning', spec: 'cmaf', clause: '§7.3.3 fragments start with SAP type 1 or 2',
+  id: 'closed-gop', category: 'Video', severity: 'warning', spec: 'rfc8216', clause: '§3 a segment decodes on its own (H.264: SHOULD contain an IDR)',
   title: 'Closed GOPs',
   applies: (c) => c.an?.classified > 0 && c.gop && c.gop.count >= 1,
   check: (c) => (c.gop.open ? warn(`${plural(c.gop.open, 'open GOP')}${c.sampled}`, 'Frames after a key frame reference the previous GOP, so a segment cut there cannot be decoded on its own.', { value: c.gop.open }) : pass(`Closed GOPs${c.sampled}`, 'Every segment cut at a key frame decodes on its own.')),
 });
 
 defineRule({
-  id: 'key-is-idr', category: 'Video', severity: 'critical', spec: 'rfc8216', clause: '§3.1; ISO 14496-12 sync samples',
+  id: 'key-is-idr', category: 'Video', severity: 'critical', spec: 'hlsAuth', clause: '7.4 video segments MUST start with an IDR frame',
   title: 'Every key frame is a random access point',
   applies: (c) => c.an?.classified > 0,
   check: (c) => {
@@ -320,14 +321,14 @@ defineRule({
 });
 
 defineRule({
-  id: 'b-frames', category: 'Video', severity: 'critical', spec: 'h264', clause: 'Baseline profile constraints',
+  id: 'b-frames', category: 'Video', severity: 'critical', spec: 'h264', clause: 'A.2.1 Baseline profile: I and P slices only',
   title: 'B-frames only where the profile allows',
   applies: (c) => c.an?.classified > 0 && c.an.maxB > 0,
   check: (c) => (c.vi.family === 'avc' && c.vi.profile === 66 ? fail(`B-frames in Baseline profile${c.sampled}`, 'Baseline profile forbids B-frames.') : info(`Up to ${plural(c.an.maxB, 'B-frame')} in a row${c.an.refB ? ', B-pyramid' : ''}${c.sampled}`, 'B-frames improve compression; players handle them.', { value: c.an.maxB })),
 });
 
 defineRule({
-  id: 'peak-ratio', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.15 peak bit rate ≤ 200 % of average (VOD)',
+  id: 'peak-ratio', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.30 VOD peak at most 200 % of the average; the peak per segment, as RFC 8216 §4.1 defines it',
   title: 'Peaks stay near the average',
   applies: (c) => c.it.rate?.avg > 0 && c.it.duration >= 3,
   check: (c) => {
@@ -393,7 +394,7 @@ defineRule({
 });
 
 defineRule({
-  id: 'colour-signalled', category: 'Colour', severity: 'critical', spec: 'h273', clause: 'colour_primaries / transfer_characteristics / matrix_coefficients; HLS spec 1.11',
+  id: 'colour-signalled', category: 'Colour', severity: 'critical', spec: 'h273', clause: 'Tables 2–4: colour primaries, transfer characteristics, matrix coefficients; Apple 1.21',
   title: 'The colour description is signalled',
   applies: (c) => !!c.vi.sps,
   check: (c) => {
@@ -406,7 +407,7 @@ defineRule({
 });
 
 defineRule({
-  id: 'hdr-consistent', category: 'Colour', severity: 'critical', spec: 'h273', clause: 'BT.2100 signalling; HLS spec 1.12 HDR',
+  id: 'hdr-consistent', category: 'Colour', severity: 'critical', spec: 'h273', clause: 'BT.2100 PQ/HLG signalling; Apple 1.7 HDR is HDR10, HLG or Dolby Vision',
   title: 'HDR signalling is consistent with the samples',
   applies: (c) => c.colour && HDR_TRANSFERS[c.colour.transfer],
   check: (c) => {
@@ -433,7 +434,7 @@ defineRule({
 });
 
 defineRule({
-  id: 'colour-expected', category: 'Colour', severity: 'warning', spec: 'practice', clause: 'one colour description across the catalogue',
+  id: 'colour-expected', category: 'Colour', severity: 'warning', spec: 'hlsAuth', clause: '1.21 a single colour space: the one the service standardises on',
   title: 'The colour description the service standardises on',
   applies: (c) => c.colour && c.ex.colour,
   check: (c) => {
@@ -453,14 +454,14 @@ defineRule({
 });
 
 defineRule({
-  id: 'depth', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.3 8-bit H.264',
+  id: 'depth', category: 'Video', severity: 'warning', spec: 'hlsAuth', clause: '1.3b at most High Profile, which is 8-bit (High 10 is beyond it)',
   title: '8-bit samples for H.264',
   applies: (c) => c.vi.family === 'avc' && c.vi.depth,
   check: (c) => (c.vi.depth > 8 ? warn(`${c.vi.depth}-bit H.264`, 'H.264 above 8 bits (High 10) is not decoded by most hardware.', { offset: c.entryOffset }) : pass('8-bit 4:2:0', 'Decoded by every device.')),
 });
 
 defineRule({
-  id: 'brands', category: 'Container', severity: 'info', spec: 'isobmff', clause: '§4.3 file type box; CMAF §7.2 brands',
+  id: 'brands', category: 'Container', severity: 'info', spec: 'isobmff', clause: '§4.3 file type box',
   title: 'File-type brands say what the file is',
   applies: (c) => !!c.mp4?.ftyp,
   check: (c) => {
@@ -495,7 +496,7 @@ defineRule({
 });
 
 defineRule({
-  id: 'hdr-metadata', category: 'Colour', severity: 'warning', spec: 'hlsAuth', clause: '1.12 HDR10 needs mastering display and content light level metadata',
+  id: 'hdr-metadata', category: 'Colour', severity: 'warning', spec: 'hlsAuth', clause: '1.35 HDR10: mastering display colour volume and content light level information SHOULD be present',
   title: 'HDR10 static metadata present',
   applies: (c) => c.colour && c.colour.transfer === 16 && c.v?.entryNode?.children,
   check: (c) => {
@@ -505,12 +506,12 @@ defineRule({
     const clli = has('clli') || has('CoLL');
     return mdcv && clli
       ? pass('Mastering display and content light level metadata present', 'HDR10 players can map the picture to their display.')
-      : warn(`HDR10 without ${[!mdcv ? 'mastering display (mdcv)' : null, !clli ? 'content light level (clli)' : null].filter(Boolean).join(' or ')} metadata`, 'Without static metadata a display tone-maps blindly; Apple requires both boxes for HDR10 renditions.', { offset: c.entryOffset });
+      : warn(`HDR10 without ${[!mdcv ? 'mastering display (mdcv)' : null, !clli ? 'content light level (clli)' : null].filter(Boolean).join(' or ')} metadata`, 'Apple asks for the mastering display colour volume and content light level information with HDR10; without it a display tone-maps blindly. This check reads the mdcv/clli boxes of the sample entry, not SEI messages in the stream.', { offset: c.entryOffset });
   },
 });
 
 defineRule({
-  id: 'fragments', category: 'Container', severity: 'critical', spec: 'cmaf', clause: '§7.3 fragment sequence, decode time continuity, moof+mdat pairing',
+  id: 'fragments', category: 'Container', severity: 'critical', spec: 'hlsAuth', clause: '7.3 fMP4 decode times continue from segment to segment; RFC 8216 §3',
   title: 'Movie fragments are continuous',
   applies: (c) => c.mp4?.moofs?.length > 0,
   check: (c) => {
@@ -557,7 +558,7 @@ defineRule({
 // ====================================================================== audio
 
 defineRule({
-  id: 'audio-codec', category: 'Audio', severity: 'warning', spec: 'hlsAuth', clause: '2.1 audio codecs',
+  id: 'audio-codec', category: 'Audio', severity: 'warning', spec: 'hlsAuth', clause: '2.2 and 2.5 supported audio codecs; 2.3 stereo AAC MUST be provided',
   title: 'An HLS audio codec',
   applies: (c) => !!c.a,
   check: (c) => {
@@ -568,7 +569,7 @@ defineRule({
 });
 
 defineRule({
-  id: 'audio-rate', category: 'Audio', severity: 'warning', spec: 'hlsAuth', clause: '2.3 sample rate',
+  id: 'audio-rate', category: 'Audio', severity: 'warning', spec: 'practice', clause: '44.1 or 48 kHz',
   title: 'A usual sample rate',
   applies: (c) => c.audio?.sampleRate,
   check: (c) => {
@@ -579,18 +580,19 @@ defineRule({
 });
 
 defineRule({
-  id: 'audio-channels', category: 'Audio', severity: 'warning', spec: 'hlsAuth', clause: '2.4 stereo for the main renditions',
+  id: 'audio-channels', category: 'Audio', severity: 'critical', spec: 'hlsAuth', clause: '9.6 multichannel audio MUST be in separate audio streams',
   title: 'Stereo or mono',
   applies: (c) => c.audio?.channels,
   check: (c) => {
     const n = c.audio.channels;
     const max = c.ex.audio?.channelsMax ?? 2;
-    return n <= max ? pass(plural(n, 'channel'), 'Every device plays it.', { value: n }) : warn(plural(n, 'channel'), 'More than two channels need a surround-capable rendition and a stereo fallback.', { value: n, expected: `≤ ${max}` });
+    if (n > 2) return fail(`${plural(n, 'channel')} in the rendition`, 'Apple asks for multichannel audio in separate audio streams (with stereo AAC alongside), not muxed into a video rendition.', { value: n, expected: '≤ 2' });
+    return n <= max ? pass(plural(n, 'channel'), 'Every device plays it.', { value: n }) : warn(plural(n, 'channel'), `More channels than the service expects (${max}).`, { value: n, expected: `≤ ${max}` });
   },
 });
 
 defineRule({
-  id: 'audio-bitrate', category: 'Audio', severity: 'warning', spec: 'practice', clause: 'AAC-LC bit rate per channel',
+  id: 'audio-bitrate', category: 'Audio', severity: 'warning', spec: 'practice', clause: 'AAC-LC bit rate per channel; Apple 2.9 lists 32–160 kbit/s for stereo AAC',
   title: 'Enough bits per audio channel',
   applies: (c) => c.audio?.bitrate && c.audio.channels,
   check: (c) => {
@@ -602,7 +604,7 @@ defineRule({
 });
 
 defineRule({
-  id: 'audio-priming', category: 'Audio', severity: 'warning', spec: 'priming', clause: 'edit list for the encoder delay',
+  id: 'audio-priming', category: 'Audio', severity: 'warning', spec: 'priming', clause: 'trim the encoder delay (priming); in MP4 with an edit list (ISO 14496-12 §8.6.6)',
   title: 'The AAC encoder delay is compensated',
   // MP4 signals the delay with an edit list, Matroska with CodecDelay; other containers have no
   // way to say it, so the rule stays silent there rather than blame them for it.
@@ -626,7 +628,7 @@ defineRule({
 // ====================================================================== measured (from the caller: ffmpeg ebur128, psnr, a sync probe)
 
 defineRule({
-  id: 'loudness', category: 'Audio', severity: 'warning', spec: 'r128', clause: 'integrated loudness target',
+  id: 'loudness', category: 'Audio', severity: 'warning', spec: 'r128', clause: 'R 128 (h): −23 LUFS ±1 LU; R 128 s2 (g): −20 to −16 LUFS for streams; the target comes from the profile',
   title: 'Integrated loudness on target',
   applies: (c) => c.measured.loudness?.integrated !== undefined,
   check: (c) => {
@@ -640,7 +642,7 @@ defineRule({
 });
 
 defineRule({
-  id: 'true-peak', category: 'Audio', severity: 'warning', spec: 'r128', clause: 'maximum true peak −1 dBTP',
+  id: 'true-peak', category: 'Audio', severity: 'warning', spec: 'r128', clause: 'R 128 (m): true peak at most −1 dBTP',
   title: 'True peak below the ceiling',
   applies: (c) => c.measured.loudness?.truePeak !== undefined,
   check: (c) => {
@@ -719,7 +721,7 @@ function hasKeyNear(keys, t, tol) {
 }
 
 defineRule({
-  id: 'idr-aligned', scope: 'ladder', category: 'Ladder', severity: 'critical', spec: 'hlsAuth', clause: '1.8 / RFC 8216 §6.2.4 aligned variants',
+  id: 'idr-aligned', scope: 'ladder', category: 'Ladder', severity: 'critical', spec: 'hlsAuth', clause: '8.22 segment boundaries at the same times in every variant (SHOULD; MUST on AirPlay 2 TVs); 7.4',
   title: 'Key frames aligned across renditions',
   applies: (l) => l.items.length >= 2 && l.items.every((it) => it.keyTimes?.length),
   check: (l) => {
@@ -746,7 +748,7 @@ defineRule({
 });
 
 defineRule({
-  id: 'segment-lengths', scope: 'ladder', category: 'Ladder', severity: 'critical', spec: 'rfc8216', clause: '§4.3.3.1 target duration',
+  id: 'segment-lengths', scope: 'ladder', category: 'Ladder', severity: 'critical', spec: 'rfc8216', clause: '§4.3.3.1 target duration; Apple 7.5–7.7 (6 s target, no segment more than 0.5 s over it)',
   title: 'A segment length fits every rendition',
   applies: (l) => l.items.length >= 2 && l.items.every((it) => it.keyTimes?.length && it.times?.length),
   check: (l) => {
@@ -780,7 +782,7 @@ defineRule({
 });
 
 defineRule({
-  id: 'frame-rates', scope: 'ladder', category: 'Ladder', severity: 'info', spec: 'hlsAuth', clause: '1.7 frame rates across renditions',
+  id: 'frame-rates', scope: 'ladder', category: 'Ladder', severity: 'info', spec: 'hlsAuth', clause: '1.31 variants MAY have different frame rates',
   title: 'Frame rates consistent across renditions',
   applies: (l) => l.items.length >= 2,
   check: (l) => {
@@ -792,7 +794,7 @@ defineRule({
 });
 
 defineRule({
-  id: 'same-audio', scope: 'ladder', category: 'Ladder', severity: 'warning', spec: 'hlsAuth', clause: '2.5 identical audio in all variants',
+  id: 'same-audio', scope: 'ladder', category: 'Ladder', severity: 'warning', spec: 'rfc8216', clause: '§6.2.4 variants SHOULD contain the same encoded audio bitstream',
   title: 'The same audio in every rendition',
   applies: (l) => l.results.some((r) => r.facts.audio),
   check: (l) => {
@@ -800,7 +802,7 @@ defineRule({
     const set = [...new Set(audio)];
     return set.length === 1
       ? pass(`Same audio in every rendition (${audio[0]})`, 'Rendition switches are inaudible.', { value: set })
-      : warn(`Audio differs across renditions: ${set.join(' / ')}`, 'Apple requires the audio of all variants to be identical in codec, channels and sample rate; a switch from mono to stereo is audible.', { value: set });
+      : warn(`Audio differs across renditions: ${set.join(' / ')}`, 'RFC 8216 asks every variant to carry the same encoded audio bitstream so that switching is inaudible; a switch from mono to stereo, or between bit rates, is heard.', { value: set });
   },
 });
 
@@ -844,10 +846,15 @@ defineRule({
 });
 
 defineRule({
-  id: 'levels', scope: 'ladder', category: 'Ladder', severity: 'info', spec: 'h264', clause: 'Annex A',
+  id: 'levels', scope: 'ladder', category: 'Ladder', severity: 'warning', spec: 'hlsAuth', clause: '1.3a some H.264 variants at most High Profile, Level 4.1',
   title: 'Levels down the ladder',
   applies: (l) => l.byHeight.length >= 1,
-  check: (l) => info(`Levels: ${l.byHeight.map((r) => `${Math.min(r.facts.video.height, r.facts.video.width ?? r.facts.video.height)}p level ${r.facts.video.levelName ?? '?'}`).join(', ')}`, 'What each rendition asks of a decoder (a portrait rendition is named by its short side).'),
+  check: (l) => {
+    const title = `Levels: ${l.byHeight.map((r) => `${Math.min(r.facts.video.height, r.facts.video.width ?? r.facts.video.height)}p level ${r.facts.video.levelName ?? '?'}`).join(', ')}`;
+    const avc = l.byHeight.filter((r) => /264|AVC/i.test(r.facts.video.codec ?? '') && r.facts.video.level);
+    if (avc.length && !avc.some((r) => r.facts.video.level <= 41)) return warn(title, 'Apple asks for some H.264 variants at High Profile, Level 4.1 or below, so older devices find a rendition they decode.', { expected: '≤ 4.1 on some rendition' });
+    return info(title, 'What each rendition asks of a decoder (a portrait rendition is named by its short side).');
+  },
 });
 
 // ====================================================================== running the rules

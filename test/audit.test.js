@@ -10,7 +10,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { open, sample, haveSample, haveFfmpeg } from './helpers.mjs';
 import { NodeFileSource } from '../scripts/node-source.mjs';
-import { auditFile, auditLadder, auditMarkdown, allRules, tally } from '../web/core/audit.js';
+import { auditFile, auditLadder, auditMarkdown, allRules, tally, SPECS } from '../web/core/audit.js';
 import { REMEDIES } from '../web/core/remedies.js';
 import { HttpSource, CachedSource } from '../web/core/source.js';
 import { openDocument } from '../web/formats/index.js';
@@ -47,6 +47,19 @@ test('every rule has a stable id, a source and a remedy where it can fail', () =
   }
   // A remedy exists for every rule that can fail or warn with a fix worth giving.
   for (const id of ['fast-start', 'colour-signalled', 'audio-priming', 'vbv', 'idr-aligned', 'hdr-consistent']) assert.ok(REMEDIES[id]?.fix, `${id} has a remedy`);
+});
+
+test('every rule cites a source it links to, Apple items by number, and says when it is only practice', () => {
+  for (const r of allRules()) {
+    assert.ok(SPECS[r.spec], `${r.id}: unknown source ${r.spec}`);
+    assert.match(SPECS[r.spec].url, /^https:\/\//, `${r.id}: the source has a link`);
+    assert.ok(r.clause, `${r.id}: names a clause`);
+    if (r.spec === 'hlsAuth') assert.match(r.clause, /^\d+\.\d+[a-z]?\b/, `${r.id}: an Apple item number`);
+  }
+  assert.match(SPECS.practice.name, /not a standard/);
+  const bySpec = (id) => allRules().find((r) => r.id === id).spec;
+  assert.equal(bySpec('same-audio'), 'rfc8216', 'the same audio bitstream in every variant is RFC 8216 §6.2.4');
+  assert.equal(bySpec('audio-rate'), 'practice', 'no Apple item names a sample rate');
 });
 
 test('expectations parse from the command line and merge', () => {
@@ -328,6 +341,48 @@ test('audio priming: an edit list that skips it, one that starts at 0, and none'
   } finally {
     ts.cleanup();
     direct.cleanup();
+  }
+});
+
+test('verdicts follow the strength of the Apple item they cite', { skip: !haveFfmpeg() }, async () => {
+  const clip = (name, args, input = 'testsrc2=s=320x180:r=25:d=1') => makeFixture(name, ['-f', 'lavfi', '-i', input, ...args]);
+  const x264 = (...args) => ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', ...args];
+  const fx = {
+    main: clip('main.mp4', x264('-profile:v', 'main')),
+    high10: clip('high10.mp4', ['-c:v', 'libx264', '-profile:v', 'high10', '-pix_fmt', 'yuv420p10le']),
+    l61: clip('l61.mp4', x264('-level', '6.1')),
+    l42: clip('l42.mp4', x264('-level', '4.2')),
+    fps120: clip('fps120.mp4', x264(), 'testsrc2=s=320x180:r=120:d=1'),
+    gop5: clip('gop5.mp4', x264('-g', '125', '-keyint_min', '125', '-sc_threshold', '0'), 'testsrc2=s=160x90:r=25:d=11'),
+    av1: clip('av1.mp4', ['-c:v', 'libsvtav1', '-preset', '12', '-pix_fmt', 'yuv420p']),
+    surround: makeFixture('surround.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=160x90:r=25:d=1', '-f', 'lavfi', '-i', 'sine=d=1', ...x264(), '-c:a', 'aac', '-ac', '6']),
+  };
+  try {
+    const r = Object.fromEntries(await Promise.all(Object.entries(fx).map(async ([k, f]) => [k, await auditPath(f.file)])));
+    const at = (k, id) => byId(r[k].checks, id);
+    // 1.4 SHOULD: High in preference to Main; 1.3b MUST: nothing above High.
+    assert.equal(at('main', 'profile').level, 'warn');
+    assert.equal(at('main', 'profile').severity, 'WARNING');
+    assert.equal(at('high10', 'profile').severity, 'CRITICAL');
+    // 1.3b MUST: at most Level 5.2; 1.11 SHOULD: no higher level than needed.
+    assert.equal(at('l42', 'level-cap').level, 'pass', 'level 4.2 is within Apple\'s 5.2');
+    assert.equal(at('l61', 'level-cap').severity, 'CRITICAL');
+    assert.equal(at('l61', 'level-minimal').level, 'warn');
+    assert.equal(at('l61', 'level-minimal').spec, 'hlsAuth');
+    // 1.3a SHOULD: some H.264 variants at 4.1 or below.
+    const ladder = auditLadder([r.l61, r.l42]);
+    assert.equal(byId(ladder.checks, 'levels').level, 'warn');
+    assert.equal(byId(auditLadder([r.l42, r.main]).checks, 'levels').level, 'info', 'the Main clip picked a level below 4.1');
+    // 1.19 SHALL NOT: above 60 fps.
+    assert.equal(at('fps120', 'fps-range').severity, 'CRITICAL');
+    // 1.13 SHOULD: a key frame every 2 s, when the service sets no interval of its own.
+    assert.equal(at('gop5', 'gop-length').level, 'warn');
+    assert.equal(byId((await auditPath(fx.gop5.file, { gop: 5 })).checks, 'gop-length').level, 'pass', 'a service that intends 5 s is judged on its intent');
+    // 1.1: AV1 is an Apple codec. 9.6 MUST: multichannel audio in separate audio streams.
+    assert.equal(at('av1', 'codec').level, 'pass');
+    assert.equal(at('surround', 'audio-channels').severity, 'CRITICAL');
+  } finally {
+    for (const f of Object.values(fx)) f.cleanup();
   }
 });
 
