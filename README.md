@@ -231,6 +231,12 @@ what the standards say. `--json` writes a report ([docs/audit-report.schema.json
 against the original. `--rules` lists the rules. The exit code is 2 on a critical finding,
 1 on a warning.
 
+Segments are judged the way a packager cuts them: at the first key frame at or after each
+multiple of the segment length, as ffmpeg's HLS muxer does. A GOP cut short anywhere in the file
+(a join between the chunks of a chunked encode, a forced key frame) therefore shows up as the
+long segment it causes, and the peak bit rate is that of the busiest segment, as HLS measures
+BANDWIDTH, rather than of the busiest second, which a large key frame alone can fill.
+
 ### Keyboard
 
 | Key | Action |

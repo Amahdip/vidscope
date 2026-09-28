@@ -245,6 +245,92 @@ test('a rung with a different GOP breaks the alignment of the ladder', { skip: !
   for (const d of docs) d._close();
 });
 
+test('a GOP cut short is named, and the segment it pushes long is found the way a packager cuts', { skip: !haveFfmpeg() }, async () => {
+  // A key frame forced at 3.4 s into 1 s GOPs: the GOP before it is 0.4 s and the key frames
+  // after it are off the 1 s grid, as at a join between the chunks of a chunked encode.
+  const make = (w, h) => makeFixture(`chunk-${h}p.mp4`, ['-f', 'lavfi', '-i', `testsrc2=s=${w}x${h}:r=25:d=8`, '-c:v', 'libx264', '-g', '25', '-keyint_min', '25', '-sc_threshold', '0', '-force_key_frames', '3.4', '-crf', '30', '-pix_fmt', 'yuv420p']);
+  const fx = [make(480, 270), make(320, 180)];
+  try {
+    const results = await Promise.all(fx.map((f) => auditPath(f.file, { gop: 1 })));
+    const r = results[0];
+    const gf = byId(r.checks, 'gop-fixed');
+    assert.equal(gf.level, 'info', 'one short GOP is not an interval that varies');
+    assert.match(gf.title, /^Key frame every 25 frames \(1 s\), except 1 shorter GOP \(0\.4 s at 0:03\)/);
+    assert.equal(byId(r.checks, 'gop-length').level, 'pass', 'the usual interval, not an average the short GOP pulls down');
+    assert.equal(r.facts.video.gop, 1);
+    const ladder = auditLadder(results, { segments: [1, 2] });
+    assert.equal(byId(ladder.checks, 'idr-aligned').level, 'pass');
+    const seg = byId(ladder.checks, 'segment-lengths');
+    assert.equal(seg.level, 'warn', 'every GOP but one fits, and the packager meets the shifted key frames');
+    assert.equal(seg.severity, 'WARNING');
+    assert.match(seg.title, /^1 s segments: 1 of 8 run long \(1\.4 s at 0:03\)$/);
+    assert.equal(seg.value, 1.4);
+    assert.match(seg.remedy.cause, /chunk/);
+  } finally {
+    for (const f of fx) f.cleanup();
+  }
+});
+
+test('the peak is measured per segment, so a large key frame alone does not make a rendition busy', { skip: !haveFfmpeg() }, async () => {
+  // A still picture of noise: a large key frame every 4 s and next to nothing between, so the
+  // second with the key frame runs about four times the average while every segment is even.
+  const fx = makeFixture('still.mp4', ['-f', 'lavfi', '-i', 'color=gray:s=320x240:r=25:d=12,noise=alls=60', '-c:v', 'libx264', '-g', '100', '-keyint_min', '100', '-sc_threshold', '0', '-crf', '23', '-pix_fmt', 'yuv420p']);
+  try {
+    const r = await auditPath(fx.file, {});
+    assert.ok(r.item.rate.ratio > 3, `the busiest second is ${r.item.rate.ratio}× the average`);
+    const p = byId(r.checks, 'peak-ratio');
+    assert.equal(p.level, 'pass');
+    assert.match(p.title, /^Busiest 4 s segment .*, 1(\.\d+)?× the average/);
+    assert.ok(p.value < 1.1, `segment peak ${p.value}× the average`);
+    assert.match(p.text, /busiest single second/);
+    const busy = await auditPath(fx.file, { peakRatio: 0.5 });
+    assert.equal(byId(busy.checks, 'peak-ratio').level, 'warn', 'a ratio above the expectation still warns');
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('few bits per pixel warn under a bitrate target, not under constant quality', { skip: !haveFfmpeg() }, async () => {
+  const flat = ['-f', 'lavfi', '-i', 'color=gray:s=640x360:r=25:d=4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p'];
+  const crf = makeFixture('crf.mp4', [...flat, '-crf', '23']);
+  const abr = makeFixture('abr.mp4', [...flat, '-b:v', '30k']);
+  try {
+    const q = byId((await auditPath(crf.file)).checks, 'bits-per-pixel');
+    assert.equal(q.level, 'info', 'CRF spends what a simple picture needs');
+    assert.match(q.title, /bits per pixel at CRF 23/);
+    const b = byId((await auditPath(abr.file)).checks, 'bits-per-pixel');
+    assert.equal(b.level, 'warn');
+    assert.equal(b.severity, 'WARNING');
+  } finally {
+    crf.cleanup();
+    abr.cleanup();
+  }
+});
+
+test('audio priming: an edit list that skips it, one that starts at 0, and none', { skip: !haveFfmpeg() }, async () => {
+  const ts = makeFixture('a.ts', ['-f', 'lavfi', '-i', 'sine=f=440:d=3', '-c:a', 'aac', '-f', 'mpegts']);
+  const direct = makeFixture('direct.mp4', ['-f', 'lavfi', '-i', 'color=black:s=64x64:r=25:d=3', '-f', 'lavfi', '-i', 'sine=f=440:d=3', '-c:v', 'libx264', '-c:a', 'aac']);
+  const remux = (edit) => {
+    const file = path.join(ts.dir, `remux-${edit}.mp4`);
+    execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=black:s=64x64:r=25:d=3', '-i', ts.file, '-map', '0', '-map', '1', '-c:v', 'libx264', '-c:a', 'copy', '-use_editlist', String(edit), file], { stdio: 'ignore' });
+    return file;
+  };
+  try {
+    const skip = byId((await auditPath(direct.file)).checks, 'audio-priming');
+    assert.equal(skip.level, 'pass');
+    assert.match(skip.title, /^Edit list skips the first 2\d\.\d ms/);
+    const zero = byId((await auditPath(remux(1))).checks, 'audio-priming');
+    assert.equal(zero.level, 'warn');
+    assert.equal(zero.title, 'The audio edit list starts at 0, so the encoder priming is played', 'an edit list is there, it just does not skip anything');
+    const none = byId((await auditPath(remux(0))).checks, 'audio-priming');
+    assert.equal(none.level, 'warn');
+    assert.equal(none.title, 'No edit list for the encoder priming');
+  } finally {
+    ts.cleanup();
+    direct.cleanup();
+  }
+});
+
 test('the remux keeps the source audio and video, and is judged on its own', { skip: !haveLadder }, async () => {
   const doc = await open('ladder-remux.mp4');
   const r = await auditFile(doc, {});
