@@ -183,11 +183,11 @@ function settingsInsights(doc, t, v, sei, name) {
     title: `${name}Encoder settings: ${parsed.label}`,
     tip: `${ENCODER_WHAT[enc]}\nIt wrote its version and every option it ran with into an SEI message (supplemental enhancement information: side data a decoder does not need) in ${where}.`,
     text: `${enc} stored its version and all ${fmtInt(rows.length)} options it ran with as text inside ${where}. Each row explains one; click a row for what it does, what this file's value means, the trade-off and how to set it with FFmpeg.`,
-    beginner: `An encoder is the program that compressed this video. Its options balance picture quality, file size and encoding speed. Beginner mode shows the ${essential} essential options; Detailed mode shows all ${fmtInt(rows.length)}. "Show the SEI text" selects those bytes in the hex view, where you can read them.`,
+    beginner: `An encoder is the program that compressed this video. Its options balance picture quality, file size and encoding speed. Guided mode shows the ${essential} essential options; Detailed mode shows all ${fmtInt(rows.length)}. "Show the SEI text" selects those bytes in the hex view, where you can read them.`,
     facts: [
       ['encoder', parsed.label, ENCODER_WHAT[enc]],
       parsed.version ? ['version', parsed.version, enc === 'x264' ? 'x264 counts versions by its API ("core") and source revision.' : 'The x265 release and its build number.'] : null,
-      ['options', `${fmtInt(rows.length)} (${essential} essential)`, 'How many options the encoder recorded. The essential ones are shown in Beginner mode.'],
+      ['options', `${fmtInt(rows.length)} (${essential} essential)`, 'How many options the encoder recorded. The essential ones are shown in Guided mode.'],
     ].filter(Boolean),
     rows: rows.map((r) => ({
       group: r.catName,

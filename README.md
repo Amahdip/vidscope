@@ -84,7 +84,7 @@ at all: see [On a static host](#on-a-static-host).
   QP); the preset the options match, and an FFmpeg command that reproduces the encode; a check of
   each video stream against its codec level (H.264, HEVC, AV1 and VP9 limits on picture size, frame
   or sample rate, bitrate, buffer and reference frames, plus the lowest level it fits); bits per
-  pixel. Every figure explains itself on hover, and Beginner mode adds plain-language notes.
+  pixel. In Guided mode every figure explains itself on hover and plain-language notes are added.
 - **Tracks** with codec strings (`avc1.64001E`, `hvc1.2.4.L63.90`, `av01.0.01M.08`, `mp4a.40.2`...), a
   frame-size chart with key frames, and a frame list that jumps to each frame's bytes.
 - **Commands**: the best-known ffprobe, ffplay and ffmpeg commands to inspect (streams, packets,
@@ -98,7 +98,7 @@ at all: see [On a static host](#on-a-static-host).
 - **Glossary** of concepts (including encoding: CRF, VBV, QP, profiles, levels, presets...)
   and of the open format's structures (every registered 4CC for MP4, the Matroska elements,
   TS packets and tables, RIFF chunks, FLV tags), marking what is present in the open file.
-- **Beginner / Detailed / Raw** levels of explanation, dark and light themes.
+- **Guided / Standard / Expert** levels of explanation: Guided adds plain-language notes and explanations on hover, Standard shows every field with a one-line description, Expert only values, offsets and bytes. Dark and light themes.
 
 Everything is parsed in the browser. The server only hands out byte ranges, so opening a
 multi-gigabyte file reads just its headers and index (usually a few megabytes), and the hex
@@ -251,7 +251,7 @@ BANDWIDTH, rather than of the busiest second, which a large key frame alone can 
 | `[` `]` | previous / next box at the same level |
 | `u` | parent box |
 | Enter / Backspace | zoom the map in / out |
-| `1` `2` `3` | Beginner / Detailed / Raw |
+| `1` `2` `3` | Guided / Standard / Expert |
 | `?` | all shortcuts |
 
 The URL keeps the file and selected offset (`?file=2#0x28`), so views can be shared

@@ -213,7 +213,7 @@ export class CommandsView {
     const card = h('div', { class: `ccard${r.reason ? ' na' : ''}`, id: `cmd-${e.id}` });
     const head = h('div', { class: 'ch' },
       h('span', { class: 'ct' }, e.title),
-      e.essential && mode !== 'beginner' ? h('span', { class: 'chip ess', 'data-tip': 'One of the essential commands Beginner mode starts with.' }, 'essential') : null,
+      e.essential && mode !== 'beginner' ? h('span', { class: 'chip ess', 'data-tip': 'One of the essential commands Guided mode starts with.' }, 'essential') : null,
       h('span', { class: 'chip tool', 'data-tip': TOOL_TIP[e.tool] }, e.tool));
     for (const n of r.needs) {
       if (!n.filter) continue;

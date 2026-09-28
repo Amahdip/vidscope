@@ -88,7 +88,7 @@ export class InsightsView {
 
   /**
    * One finding. Besides title/text/facts/cmd/node/offset, optional fields: `tip` (hover text of
-   * the title), `beginner` (a fuller explanation shown in Beginner mode), `list` (short notes),
+   * the title), `beginner` (a fuller explanation shown in Guided mode), `list` (short notes),
    * facts as [k, v, tip], `rows` (see row()), `groupTips` and `closed` (row groups), `cmdParts`
    * ([[text, tip]] spelling out `cmd` with an explanation per part) and `offsetLabel`.
    */
@@ -111,7 +111,7 @@ export class InsightsView {
     return c;
   }
 
-  /** Rows grouped under collapsible headings; rows marked `advanced` are hidden in Beginner mode. */
+  /** Rows grouped under collapsible headings; rows marked `advanced` are hidden in Guided mode. */
   rows(i) {
     const wrap = h('div', { class: 'irows' });
     const groups = new Map();
@@ -138,7 +138,7 @@ export class InsightsView {
   /**
    * A row: { k, v, limit?, text?, note?, status?: good|warn|bad|info, ktip?, vtip?, ltip?,
    * more?: [[label, text, code?]], advanced? }. Rows with `more` expand on click; `note` is a
-   * plain-language line shown in Beginner mode; a value with a `limit` gets a line of its own.
+   * plain-language line shown in Guided mode; a value with a `limit` gets a line of its own.
    */
   row(r) {
     const value = h('span', { class: 'rv', 'data-tip': r.vtip }, r.v);

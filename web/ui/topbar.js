@@ -4,9 +4,9 @@ import { h, icon, clear } from './dom.js';
 import { humanBytes, humanSize, fmtDuration, fmtInt } from '../core/util.js';
 
 const MODES = [
-  ['beginner', 'Beginner', 'Plain-language explanations; hides reserved fields'],
-  ['detailed', 'Detailed', 'Every field with its explanation'],
-  ['raw', 'Raw', 'Fields and bytes only, no prose'],
+  ['beginner', 'Guided', 'Plain-language notes, and explanations when you hover a term; reserved fields hidden'],
+  ['detailed', 'Standard', 'Every field with a one-line description; no hover explanations'],
+  ['raw', 'Expert', 'Values, offsets and bytes only; no descriptions or explanations'],
 ];
 
 export class Topbar {
