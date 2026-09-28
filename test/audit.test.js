@@ -389,6 +389,55 @@ test('verdicts follow the strength of the Apple item they cite', { skip: !haveFf
   }
 });
 
+test('what the audit could not check is listed, and the pass rate counts every verdict', { skip: !haveLadder }, async () => {
+  const doc = await open('ladder-270p.mp4');
+  const r = await auditFile(doc, { loudness: { integrated: -16, tolerance: 1 } });
+  for (const id of ['loudness', 'true-peak', 'av-sync', 'quality']) {
+    const c = byId(r.checks, id);
+    assert.equal(c?.level, 'skip', `${id} is listed as not checked, not left out`);
+    assert.match(c.title, /not measured/);
+  }
+  assert.match(byId(r.checks, 'loudness').text, /target is -16 LUFS/);
+  const measured = await auditFile(doc, { loudness: { integrated: -16, tolerance: 1 } }, { measured: { loudness: { integrated: -16.4, truePeak: -2 } } });
+  assert.equal(byId(measured.checks, 'loudness').level, 'pass');
+  assert.equal(byId(measured.checks, 'true-peak').level, 'pass');
+  doc._close();
+  const t = tally([{ level: 'pass' }, { level: 'pass' }, { level: 'warn', severity: 'WARNING' }, { level: 'fail', severity: 'CRITICAL' }, { level: 'info' }, { level: 'skip' }]);
+  assert.equal(t.compliance, 0.5, 'two passes of four verdicts: a warning is not a pass');
+  assert.equal(t.skip, 1);
+});
+
+test('a playlist is refused as outside the audit, not failed as a file without video', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vidscope-audit-'));
+  const file = path.join(dir, 'master.m3u8');
+  fs.writeFileSync(file, '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=191049,RESOLUTION=592x320\nv360.m3u8\n');
+  try {
+    const r = await auditPath(file);
+    assert.equal(r.checks.length, 1);
+    assert.equal(r.checks[0].level, 'skip');
+    assert.match(r.checks[0].title, /Not audited: HLS playlist/);
+    assert.equal(tally(r.checks).critical, 0, 'no "No video track" critical finding');
+    const out = await auditInputs({ inputs: [file], headers: {}, expect: {}, ladder: false, budget: null, measure: false }, () => {});
+    assert.equal(out.results[0].reason, 'unsupported');
+    assert.match(out.results[0].error, /playlists and manifests are not audited yet/);
+    assert.equal(toReport(out, { expect: {} }).summary.errors, 1, 'the CLI exits 3: an input could not be audited');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('rendition names are size tiers: a wide picture keeps its tier, a wrong one is named', () => {
+  const rung = (file, width, height) => ({ file, facts: { video: { width, height } }, checks: [], item: null });
+  const ok = auditLadder([rung('v-360p.mp4', 592, 320), rung('v-240p.mp4', 426, 230), rung('v-144p.mp4', 264, 142), rung('film-1080p.mp4', 1920, 800)]);
+  const c = byId(ok.checks, 'label-matches-size');
+  assert.equal(c.level, 'pass', c.title);
+  assert.match(c.text, /keeps the source's shape/);
+  const bad = byId(auditLadder([rung('v-360p.mp4', 854, 480), rung('v-720p.mp4', 640, 360)]).checks, 'label-matches-size');
+  assert.equal(bad.level, 'warn');
+  assert.match(bad.title, /v-360p\.mp4: labelled 360p, but 854×480 is larger than 360p/);
+  assert.match(bad.title, /v-720p\.mp4: labelled 720p, but 640×360 fits a 540p frame/);
+});
+
 test('the remux keeps the source audio and video, and is judged on its own', { skip: !haveLadder }, async () => {
   const doc = await open('ladder-remux.mp4');
   const r = await auditFile(doc, {});

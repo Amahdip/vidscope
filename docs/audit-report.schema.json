@@ -593,7 +593,7 @@
             "number",
             "null"
           ],
-          "description": "passed ÷ (passed + failed), warnings aside"
+          "description": "passed ÷ checks with a verdict (passed, warned or failed); information and checks that could not run (skip) are left out"
         },
         "errors": {
           "type": "integer",
