@@ -404,7 +404,7 @@ async function measureLoudnessOnce(later, results, o, log) {
       }
       if (l.missing) missing = true;
       if (!l.error) {
-        const how = l.read.via === 'audio samples' ? `${(l.read.bytes / 1048576).toFixed(1)} MB in ${l.read.requests} requests` : `the whole file, read by ffmpeg (${l.read.reason})`;
+        const how = l.read.via === 'audio samples' ? `${(l.read.bytes / 1048576).toFixed(1)} MB in ${l.read.requests} ${l.read.requests === 1 ? 'request' : 'requests'}` : `the whole file, read by ffmpeg (${l.read.reason})`;
         log(`${shown(from.input)}: loudness ${l.integrated} LUFS, true peak ${l.truePeak ?? '?'} dBTP, from ${how}${members.length > 1 ? `; the same audio in ${members.length - 1} other ${members.length === 2 ? 'input' : 'inputs'}` : ''}`);
       }
       for (const p of members) {

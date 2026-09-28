@@ -100,14 +100,14 @@ test('a ladder sharing one audio encode is measured once, from its smallest file
   }
   const said = lines.filter((l) => /loudness/.test(l));
   assert.equal(said.length, 1, said.join('\n'));
-  assert.match(said[0], /film-180p\.mp4: loudness .* from [\d.]+ MB in \d+ requests; the same audio in 2 other inputs/);
+  assert.match(said[0], /film-180p\.mp4: loudness .* from [\d.]+ MB in \d+ requests?; the same audio in 2 other inputs/);
   const size = (n) => fs.statSync(path.join(dir, n)).size;
   assert.ok(served.get('/film-720p.mp4') < size('film-720p.mp4') / 4, `720p: ${served.get('/film-720p.mp4')} of ${size('film-720p.mp4')} bytes read`);
   assert.ok(served.get('/film-360p.mp4') < size('film-360p.mp4') / 2, `360p: ${served.get('/film-360p.mp4')} of ${size('film-360p.mp4')} bytes read`);
 });
 
 test('AC-3 frames stream as they are, and Opus is left to FFmpeg', { skip: !haveFfmpeg() || !haveSample('h264-ac3.mp4') || !haveSample('av1-opus.mp4') }, async () => {
-  for (const [name, via] of [['h264-ac3.mp4', /from [\d.]+ MB in \d+ requests/], ['av1-opus.mp4', /from the whole file, read by ffmpeg \(Opus is not streamed by range\)/]]) {
+  for (const [name, via] of [['h264-ac3.mp4', /from [\d.]+ MB in \d+ requests?$/], ['av1-opus.mp4', /from the whole file, read by ffmpeg \(Opus is not streamed by range\)/]]) {
     const lines = [];
     const out = await auditInputs({ inputs: [sample(name)], headers: {}, expect: {}, ladder: false, budget: null, measure: true, source: null }, (l) => lines.push(l));
     const want = reference(sample(name));
