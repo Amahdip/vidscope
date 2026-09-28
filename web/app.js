@@ -241,6 +241,27 @@ const app = {
     this.updateUrl();
   },
 
+  /**
+   * Back to the start page: the open file, comparison and report close (the comparison and a
+   * finished report stay one click away, as when they are closed on their own).
+   */
+  goHome() {
+    openSeq++;
+    selSeq++;
+    checkSeq++;
+    hideTip();
+    const s = store.get();
+    if (s.doc && !this.compareView?.holds(s.doc)) cancelFrameScans(s.doc);
+    store.set({
+      current: null, doc: null, loading: null, error: null, sel: null, level: null,
+      compare: null, lastCompare: s.compare ?? s.lastCompare,
+      report: null, lastReport: s.report?.status === 'done' ? s.report : s.lastReport,
+    });
+    document.title = 'Vidscope';
+    this.updateUrl(null);
+    this.pushHash(null);
+  },
+
   closeCompare() {
     const cmp = store.get().compare;
     if (!cmp) return;

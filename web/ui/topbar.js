@@ -52,7 +52,17 @@ export class Topbar {
     this.themeBtn = h('button', { class: 'iconbtn', onclick: () => this.toggleTheme() });
     const helpBtn = h('button', { class: 'iconbtn', title: 'Keyboard shortcuts (?)', 'aria-label': 'Keyboard shortcuts', onclick: () => app.showHelp() }, icon('help'));
     this.el.append(
-      h('div', { class: 'brand' }, brandMark(), h('b', null, 'Vidscope'), this.anatomy),
+      h('div', { class: 'brand' },
+        // A real link, so a middle or modified click opens a fresh start page in a new tab.
+        h('a', {
+          class: 'home', href: './', title: 'Start page', 'aria-label': 'Vidscope: start page',
+          onclick: (e) => {
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            app.goHome();
+          },
+        }, brandMark(), h('b', null, 'Vidscope')),
+        this.anatomy),
       this.fileBtn,
       this.summary,
       h('div', { class: 'top-right' }, this.goto, h('div', { class: 'seg', role: 'group', 'aria-label': 'Detail level' }, this.modeButtons), this.themeBtn, helpBtn),
