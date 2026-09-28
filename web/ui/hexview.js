@@ -423,7 +423,8 @@ export class HexView {
       return;
     }
     if (this.hover?.offset !== o) this.setHover(o);
-    showTip(e.clientX, e.clientY, this.describe(o));
+    // What a byte is shows on click in the inspector; the hover description is for Guided mode.
+    if (this.app.store.get().mode === 'beginner') showTip(e.clientX, e.clientY, this.describe(o));
   }
 
   setHover(o) {

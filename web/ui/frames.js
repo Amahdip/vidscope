@@ -601,7 +601,7 @@ export class FramesView {
       const name = codecTypeName(ft.family, ft.nal[i]);
       if (name) lines.push(`bitstream: ${name}${ft.layer[i] ? `, temporal layer ${ft.layer[i]}` : ''}`);
     }
-    if (known && this.app.store.get().mode !== 'raw') lines.push('', explainFrame(ft.family, ft.type[i], ft.flags[i]));
+    if (known && this.app.store.get().mode === 'beginner') lines.push('', explainFrame(ft.family, ft.type[i], ft.flags[i]));
     return lines.join('\n');
   }
 

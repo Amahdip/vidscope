@@ -7,7 +7,7 @@ import { fieldsAt, ensureChildren } from './core/model.js';
 import { parseOffset, hex } from './core/util.js';
 import { frameTypes, cancelFrameScans } from './core/frames.js';
 import { frameLabel } from './codecs/frametype.js';
-import { installTips, setTipFileSize, hideTip } from './ui/tooltip.js';
+import { installTips, setTipFileSize, hideTip, setExplainTips } from './ui/tooltip.js';
 import { h, toast } from './ui/dom.js';
 import { Topbar } from './ui/topbar.js';
 import { Mapbar } from './ui/mapbar.js';
@@ -517,6 +517,7 @@ function applyTheme(theme) {
 function applyMode(mode) {
   document.body.classList.remove('mode-beginner', 'mode-detailed', 'mode-raw');
   document.body.classList.add(`mode-${mode}`);
+  setExplainTips(mode === 'beginner');
 }
 
 // ------------------------------------------------------------ drag and drop, keys
@@ -558,7 +559,7 @@ function showHelp() {
     ['u', 'select the parent box'],
     ['Enter', 'zoom the map into the selected box'],
     ['Backspace', 'zoom the map out'],
-    ['1 2 3', 'Beginner / Detailed / Raw'],
+    ['1 2 3', 'Guided / Standard / Expert'],
     ['Esc', 'clear the selection'],
   ];
   const overlay = h('div', { class: 'help', onclick: (e) => { if (e.target === overlay) overlay.remove(); } },
