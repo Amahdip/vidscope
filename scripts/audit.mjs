@@ -355,7 +355,9 @@ async function measureLoudness(input, headers, doc, raw) {
   const t = doc.tracks.find((x) => x.kind === 'audio');
   if (!t) return { error: 'no audio stream' };
   const { format, reason } = audioStreamFormat(doc, t);
-  const ebur128 = ['-af', 'ebur128=peak=true', '-f', 'null', '-'];
+  // Mono as dual mono: R 128 measures a single channel as one loudspeaker, 3 LU below the same
+  // sound on two, and players send a mono track to both (EBU Tech 3344).
+  const ebur128 = ['-af', 'ebur128=peak=true:dualmono=true', '-f', 'null', '-'];
   if (format && raw?.readRaw) {
     const read = { via: 'audio samples', bytes: 0, requests: 0 };
     const readRaw = async (at, n) => {

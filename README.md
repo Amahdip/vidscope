@@ -203,7 +203,8 @@ Loudness (EBU R 128 integrated loudness and true peak) is measured from the audi
 Vidscope reads them by byte range and hands them to FFmpeg, so a file on a server costs its audio
 rather than its size. Renditions carrying the same audio encode (the same AAC frames) are measured
 once, from the smallest of them. Audio that cannot be streamed that way (Opus, MPEG-TS) is read
-by FFmpeg in full.
+by FFmpeg in full. Mono is measured as dual mono (EBU Tech 3344), because players send it to both
+speakers; measured as one speaker it would read 3 LU quieter than it sounds.
 
 `--decode` decodes every video and audio frame with FFmpeg, single-threaded (with frame threads
 FFmpeg can let a damaged frame through unflagged), and reports each damaged frame with the moment

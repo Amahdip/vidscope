@@ -45,6 +45,8 @@ Each entry links to the pull request with the details.
   refused as outside the audit instead of failing ([#23](https://github.com/Amahdip/vidscope/pull/23)).
 
 ### Fixed
+- Loudness measures a mono rendition as dual mono, as players play it on both speakers; it read
+  3 LU quieter than the same sound in stereo ([#36](https://github.com/Amahdip/vidscope/pull/36)).
 - The VBV buffer check no longer crashes when the next file opens ([#15](https://github.com/Amahdip/vidscope/pull/15)).
 
 ## 2026-09-22
