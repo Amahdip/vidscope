@@ -6,6 +6,7 @@ Each entry links to the pull request with the details.
 ## 2026-09-28
 
 ### Added
+- An "Audit standards" button on the start page opens the standards register ([#34](https://github.com/Amahdip/vidscope/pull/34)).
 - The standards register reads in Farsi as well as English, right to left, with MUST and SHOULD
   kept apart in the wording; the build stops when an English note changes without its Farsi
   ([#33](https://github.com/Amahdip/vidscope/pull/33)).
