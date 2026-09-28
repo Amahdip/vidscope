@@ -470,7 +470,10 @@ test('a damaged payload inside intact structure is found by the full decode, at 
     assert.equal(bad.level, 'fail');
     assert.equal(bad.severity, 'CRITICAL');
     assert.match(bad.title, /^1 damaged frame \(first shown at 0:0\d\.\d+\)$/);
-    assert.equal(bad.offset, s.offsets[i], 'the report jumps to the damaged frame\'s bytes');
+    // The first damaged frame shown is the damaged one or a B-frame that refers to it, shown
+    // earlier: either way within a few frames of the damaged packet in decoding order.
+    const k = s.offsets.indexOf(bad.offset);
+    assert.ok(k >= 0 && Math.abs(k - i) <= 3, `the report jumps to a damaged frame's bytes (frame ${k}, damaged packet ${i})`);
     assert.equal(enc.level, 'skip');
     assert.match(enc.text, /encrypted/);
   } finally {
