@@ -1,0 +1,437 @@
+<title>Audit Standards Register</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<style>
+:root {
+  --paper: #f4f5f1;
+  --sheet: #ffffff;
+  --ink: #1a2130;
+  --muted: #586172;
+  --faint: #8a93a1;
+  --line: #dcdfd6;
+  --accent: #245b88;
+  --accent-soft: #e2ecf4;
+  --must: #a1271e;
+  --must-soft: #f6e3e0;
+  --should: #855700;
+  --should-soft: #f5ebd5;
+  --may: #4f5b6a;
+  --may-soft: #e8ebef;
+  --prac: #614f98;
+  --prac-soft: #ebe7f6;
+  --ok: #2b7447;
+  --ok-soft: #dff0e5;
+  --focus: #245b88;
+  --serif: 'IBM Plex Serif', Georgia, 'Times New Roman', serif;
+  --sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #11151c; --sheet: #181d26; --ink: #e5e8ed; --muted: #a0a8b6; --faint: #748091; --line: #2b323d;
+    --accent: #86b6e0; --accent-soft: #1b2a39; --must: #f08f86; --must-soft: #3a1e1c; --should: #e2b45e; --should-soft: #352918;
+    --may: #b3bcc8; --may-soft: #262c35; --prac: #b8aaf0; --prac-soft: #29243f; --ok: #7fcf9d; --ok-soft: #16301f; --focus: #86b6e0;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #11151c; --sheet: #181d26; --ink: #e5e8ed; --muted: #a0a8b6; --faint: #748091; --line: #2b323d;
+  --accent: #86b6e0; --accent-soft: #1b2a39; --must: #f08f86; --must-soft: #3a1e1c; --should: #e2b45e; --should-soft: #352918;
+  --may: #b3bcc8; --may-soft: #262c35; --prac: #b8aaf0; --prac-soft: #29243f; --ok: #7fcf9d; --ok-soft: #16301f; --focus: #86b6e0;
+}
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.55 var(--sans); }
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 20px; padding-block: 36px 64px; display: grid; gap: 48px; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+h1, h2, h3 { font-family: var(--serif); font-weight: 600; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.1; letter-spacing: -0.01em; }
+h2 { font-size: 24px; line-height: 1.2; }
+h3 { font-size: 17px; line-height: 1.3; font-weight: 500; }
+p { margin: 0; }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.lede { max-width: 68ch; color: var(--muted); font-size: 16px; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* masthead */
+.mast { display: grid; gap: 18px; }
+.facts { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 6px 0 0; padding: 16px 0 0; border-top: 1px solid var(--line); }
+.facts div { display: grid; gap: 2px; }
+.facts dt { font: 500 11px/1.2 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.facts dd { margin: 0; font: 600 24px/1.1 var(--serif); font-variant-numeric: tabular-nums; }
+.progress { display: grid; gap: 8px; max-width: 560px; }
+.bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--may-soft); }
+.bar span { display: block; height: 100%; }
+.bar .b-ok { background: var(--ok); }
+.bar .b-q { background: var(--should); }
+.bar .b-no { background: var(--must); }
+.progress p { font-size: 13px; color: var(--muted); }
+
+/* section heads */
+section { display: grid; gap: 18px; }
+.shead { display: grid; gap: 6px; }
+.shead p { color: var(--muted); max-width: 70ch; }
+
+/* how to read */
+.how { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+.how > div { display: grid; gap: 10px; align-content: start; }
+.how h3 { font-size: 15px; font-family: var(--sans); font-weight: 600; }
+.key { display: grid; grid-template-columns: max-content 1fr; gap: 8px 12px; align-items: baseline; font-size: 13.5px; margin: 0; }
+.key dd { margin: 0; color: var(--muted); }
+
+/* chips */
+.tag { display: inline-flex; align-items: center; gap: 6px; font: 500 11.5px/1 var(--mono); letter-spacing: 0.03em; padding: 5px 8px; border-radius: 4px; white-space: nowrap; }
+.n-must { color: var(--must); background: var(--must-soft); }
+.n-should { color: var(--should); background: var(--should-soft); }
+.n-may { color: var(--may); background: var(--may-soft); }
+.n-prac { color: var(--prac); background: var(--prac-soft); }
+.v-text { color: var(--ok); background: var(--ok-soft); }
+.v-unread { color: var(--should); background: var(--should-soft); }
+.v-practice { color: var(--prac); background: var(--prac-soft); }
+.s-critical { color: var(--must); border: 1px solid currentColor; background: transparent; }
+.s-warning { color: var(--should); border: 1px solid currentColor; background: transparent; }
+.s-info { color: var(--may); border: 1px solid currentColor; background: transparent; }
+
+/* sources table */
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet); }
+table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+th { font: 500 11px/1.2 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--paper); }
+td.note { color: var(--muted); font-size: 13px; max-width: 42ch; }
+td .src { font-weight: 600; }
+
+/* filters */
+.filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 2; background: var(--paper); padding-block: 10px; border-bottom: 1px solid var(--line); }
+.filters label { display: grid; gap: 4px; font: 500 11px/1.2 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.filters select, .filters input { font: 14px/1.2 var(--sans); color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 5px; padding: 7px 9px; min-width: 0; }
+.filters input { width: 200px; max-width: 100%; }
+.filters .count { margin-left: auto; font-size: 13px; color: var(--muted); align-self: center; }
+
+/* groups and rules */
+.group { display: grid; gap: 0; }
+.ghead { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; padding: 22px 0 10px; border-bottom: 2px solid var(--ink); }
+.ghead h3 { font-size: 20px; font-weight: 600; }
+.ghead .gmeta { font-size: 13px; color: var(--muted); }
+.rule { display: grid; grid-template-columns: 112px 1fr; gap: 18px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.cite { font: 500 20px/1.1 var(--mono); color: var(--accent); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.cite.long { font-size: 15px; line-height: 1.2; }
+.cite small { display: block; margin-top: 6px; font: 400 11px/1.3 var(--mono); color: var(--faint); letter-spacing: 0.02em; }
+.rbody { display: grid; gap: 10px; min-width: 0; }
+.rtop { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+.rid { font: 400 12px/1 var(--mono); color: var(--faint); }
+.clause { font-size: 13.5px; color: var(--muted); }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.says { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 4px 0 0; }
+.says div { display: grid; gap: 4px; align-content: start; }
+.says dt { font: 500 11px/1.2 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.says dd { margin: 0; font-size: 14.5px; max-width: 60ch; }
+
+/* review */
+.review { display: grid; gap: 8px; margin-top: 6px; padding: 12px; border-radius: 6px; background: var(--sheet); border: 1px solid var(--line); }
+.rv-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rv-btn { font: 500 13px/1 var(--sans); padding: 8px 12px; border-radius: 5px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); cursor: pointer; }
+.rv-btn:hover { border-color: var(--muted); }
+.rv-btn[aria-pressed="true"].b-ok { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+.rv-btn[aria-pressed="true"].b-q { background: var(--should-soft); color: var(--should); border-color: var(--should); }
+.rv-btn[aria-pressed="true"].b-no { background: var(--must-soft); color: var(--must); border-color: var(--must); }
+.rv-btn:disabled { opacity: 0.55; cursor: default; }
+.rv-meta { font-size: 12.5px; color: var(--muted); }
+.review textarea { width: 100%; min-height: 38px; resize: vertical; font: 14px/1.45 var(--sans); color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 5px; padding: 8px 10px; }
+.review .ro { font-size: 13px; color: var(--muted); }
+
+/* gaps */
+.gaps { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px 32px; }
+.gap h3 { font-family: var(--sans); font-size: 15px; font-weight: 600; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.gap ul { list-style: none; margin: 0; padding: 0; display: grid; }
+.gap li { display: grid; grid-template-columns: 92px 1fr; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.gap li .gi { font: 500 13px/1.3 var(--mono); color: var(--accent); }
+.gap li .gw { grid-column: 2; font-size: 12.5px; color: var(--muted); }
+.gap li .tag { justify-self: start; margin-bottom: 4px; }
+.applink { display: none; color: inherit; text-decoration: none; }
+.static .applink { display: inline; }
+.static .applink:hover { color: var(--accent); }
+.static .hosted-only, .static .review, .static .progress { display: none; }
+footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
+
+@media (max-width: 640px) {
+  .wrap { padding-inline: 16px; padding-block: 24px 48px; gap: 36px; }
+  .rule { grid-template-columns: 1fr; gap: 8px; }
+  .cite { font-size: 17px; }
+  .cite small { display: inline; margin-left: 8px; }
+  .says { grid-template-columns: 1fr; }
+  .filters { position: static; }
+  .filters .count { margin-left: 0; width: 100%; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .rv-btn { transition: background-color 120ms ease, border-color 120ms ease; }
+}
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <p class="eyebrow"><a class="applink" href="./">← Vidscope</a><span class="applink"> · </span>Conversion audit · the standards behind it</p>
+    <h1>Audit Standards Register</h1>
+    <p class="lede">Every check the conversion audit runs, the published standard it comes from, and the exact item it cites. Each requirement is summarised in our own words: open the source to confirm it<span class="hosted-only">, then mark the rule confirmed or raise a question. Reviews are saved here for everyone with access</span>.</p>
+    <dl class="facts" id="facts"></dl>
+    <div class="progress" aria-live="polite">
+      <div class="bar" id="bar" role="img" aria-label="Review progress"></div>
+      <p id="progress-text">Loading reviews…</p>
+    </div>
+  </header>
+
+  <section aria-labelledby="how-h">
+    <div class="shead"><h2 id="how-h">How to read it</h2></div>
+    <div class="how">
+      <div>
+        <h3>Severity follows the source</h3>
+        <dl class="key">
+          <dt><span class="tag n-must">MUST</span></dt><dd>A requirement (also SHALL, SHALL NOT). Breaking it is <b>critical</b>.</dd>
+          <dt><span class="tag n-should">SHOULD · Recommends</span></dt><dd>A recommendation. Breaking it is a <b>warning</b>, unless the rule explains otherwise.</dd>
+          <dt><span class="tag n-may">MAY · Defines · Adapted</span></dt><dd>An option, a definition with no requirement, or a requirement the audit adapts to a single file. Reported as <b>information</b>, or with a severity that is our own judgement and says so.</dd>
+          <dt><span class="tag n-prac">Practice · Service</span></dt><dd>Not a standard: industry practice, or the service's own profile.</dd>
+        </dl>
+      </div>
+      <div>
+        <h3>How each citation was verified</h3>
+        <dl class="key">
+          <dt><span class="tag v-text">Checked</span></dt><dd>Read against the published text on 28 September 2026.</dd>
+          <dt><span class="tag v-unread">Not re-read</span></dt><dd>The source could not be downloaded here (ITU, ISO). The clause comes from the standard's known structure: please open it and confirm.</dd>
+          <dt><span class="tag v-practice">Practice</span></dt><dd>No standard to check against.</dd>
+        </dl>
+      </div>
+      <div class="hosted-only">
+        <h3>Reviewing</h3>
+        <p class="lede" style="font-size:14px">Open the source from the table below, find the item, and press <b>Confirm</b>, <b>Question</b> or <b>Disagree</b> on the rule. Add a note for anything to change. Each rule keeps the latest review, with who made it and when.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="src-h">
+    <div class="shead"><h2 id="src-h">Sources</h2><p>Where each rule comes from. The links open the official documents.</p></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th scope="col">Source</th><th scope="col">Edition</th><th scope="col">Access</th><th scope="col">Rules</th><th scope="col">Verified</th><th scope="col">What was checked</th></tr></thead>
+      <tbody id="sources"></tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="rules-h">
+    <div class="shead"><h2 id="rules-h">The rules</h2><p>Grouped by source. The large number is the item or clause cited; the small id is the name the rule has in audit reports.</p></div>
+    <form class="filters" id="filters" onsubmit="return false">
+      <label for="f-src">Source<select id="f-src"><option value="">All sources</option></select></label>
+      <label for="f-ver">Verified<select id="f-ver"><option value="">Any</option><option value="text">Checked against the text</option><option value="unread">Not re-read</option><option value="practice">Practice</option></select></label>
+      <label for="f-rev">Review<select id="f-rev"><option value="">Any</option><option value="none">Not reviewed</option><option value="confirmed">Confirmed</option><option value="question">Question</option><option value="disagree">Disagree</option></select></label>
+      <label for="f-q">Search<input id="f-q" type="search" placeholder="gop, audio, 7.4…" autocomplete="off"></label>
+      <span class="count" id="f-count"></span>
+    </form>
+    <div id="groups"></div>
+  </section>
+
+  <section aria-labelledby="gaps-h">
+    <div class="shead"><h2 id="gaps-h">Not audited yet</h2><p>Requirements the audit does not check today. Most concern playlists, captions and trick play, which are made elsewhere in the delivery chain rather than in the rendition files the audit reads. Some are readable from the files and are candidates for new rules.</p></div>
+    <div class="gaps" id="gaps"></div>
+  </section>
+
+  <footer id="foot"></footer>
+</div>
+
+<script type="application/json" id="data">{"version":"0.1.0","checked":"28 September 2026","sources":[{"key":"hlsAuth","name":"HLS Authoring Specification for Apple Devices","url":"https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices","short":"Apple HLS spec","edition":"Current web edition","access":"Free","checked":"text","note":"Every cited item was read against the current text. Items are numbered by section (1 video, 2 audio, 7 segments, 8 media playlists, 9 multivariant playlists).","count":33},{"key":"rfc8216","name":"RFC 8216, HTTP Live Streaming","url":"https://www.rfc-editor.org/rfc/rfc8216","short":"RFC 8216","edition":"August 2017","access":"Free","checked":"text","note":"Read: §3 (media segments), §4.1 (segment bit rates), §4.3.3.1 (target duration), §4.3.4.2 (BANDWIDTH, AVERAGE-BANDWIDTH, CODECS, RESOLUTION, FRAME-RATE), §6.2.1 (server duties), §6.2.4 (variant streams), §7 (versions).","count":7},{"key":"h264","name":"ITU-T H.264","url":"https://www.itu.int/rec/T-REC-H.264","short":"ITU-T H.264","edition":"Current ITU edition","access":"Free from ITU","checked":"unread","note":"Not re-read: ITU refused automated downloads today. Clause numbers come from the standard's long-stable structure (Annex A levels, A.2.1 Baseline, Annex C HRD, 7.4.2.1.1 cropping). Please open the PDF and confirm.","count":4},{"key":"h273","name":"ITU-T H.273, colour description","url":"https://www.itu.int/rec/T-REC-H.273","short":"ITU-T H.273","edition":"Current ITU edition","access":"Free from ITU","checked":"unread","note":"Not re-read: ITU refused automated downloads today. The tables of colour primaries, transfer characteristics and matrix coefficients are the ones FFmpeg and every encoder use.","count":4},{"key":"isobmff","name":"ISO/IEC 14496-12, ISO base media file format","url":"https://www.iso.org/standard/83102.html","short":"ISO/IEC 14496-12","edition":"2022","access":"ISO","checked":"unread","note":"Not re-read: ISO's site does not serve the text to a script. Section numbers (4.3 file type, 8.3.2 track header, 8.6.6 edit list) come from the standard's structure.","count":4},{"key":"priming","name":"Apple TN2258, AAC audio: encoder delay and synchronization","url":"https://developer.apple.com/library/archive/technotes/tn2258/_index.html","short":"Apple TN2258","edition":"Archived technical note","access":"Free","checked":"text","note":"Read: AAC encoders add priming samples (commonly 2112); if playback does not trim them, audio runs behind the video.","count":1},{"key":"r128","name":"EBU R 128 (2023) and R 128 s2, loudness normalisation","url":"https://tech.ebu.ch/publications/r128","short":"EBU R 128","edition":"R 128 (2023), R 128 s2 (2023)","access":"Free","checked":"text","note":"Read: R 128 recommendations (h) target level and (m) true peak; R 128 s2 recommendation (g) for streaming.","count":2},{"key":"bt1359","name":"ITU-R BT.1359-1, relative timing of sound and vision","url":"https://www.itu.int/rec/R-REC-BT.1359","short":"ITU-R BT.1359-1","edition":"1998","access":"Free","checked":"text","note":"Read: detectability and acceptability thresholds for sound leading or lagging the picture.","count":1},{"key":"practice","name":"Common encoding practice, not a standard","url":"https://streaminglearningcenter.com","short":"Common practice","edition":"—","access":"—","checked":"practice","note":"Not a standard. Streaming-industry practice (Apple's ladder notes, encoder vendors, Streaming Learning Center), shown as such so the audit never passes it off as a requirement.","count":15}],"rules":[{"id":"codec","title":"An HLS video codec","scope":"file","category":"Video","severity":"critical","spec":"hlsAuth","clause":"1.1 H.264, HEVC, Dolby Vision or AV1","cite":"1.1","norm":"MUST","req":"Video must be H.264, HEVC, Dolby Vision or AV1.","check":"H.264, HEVC and AV1 pass; any other codec fails (critical)."},{"id":"levels","title":"Levels down the ladder","scope":"ladder","category":"Ladder","severity":"warning","spec":"hlsAuth","clause":"1.3a some H.264 variants at most High Profile, Level 4.1","cite":"1.3a","norm":"SHOULD","req":"Some H.264 variants should be at most High Profile, Level 4.1, for the widest device reach.","check":"Lists the levels down the ladder; warns when no H.264 rendition is at 4.1 or below."},{"id":"depth","title":"8-bit samples for H.264","scope":"file","category":"Video","severity":"critical","spec":"hlsAuth","clause":"1.3b at most High Profile, which is 8-bit (High 10 is beyond it)","cite":"1.3b","norm":"MUST","req":"H.264 must be at most High Profile, which is 8-bit; 10-bit H.264 (High 10) is beyond it.","check":"Fails (critical) on H.264 above 8 bits."},{"id":"level-cap","title":"H.264 level at most 5.2","scope":"file","category":"Video","severity":"critical","spec":"hlsAuth","clause":"1.3b H.264 at most High Profile, Level 5.2","cite":"1.3b","norm":"MUST","req":"H.264 must be at most High Profile, Level 5.2.","check":"Fails (critical) above Level 5.2."},{"id":"profile","title":"A supported H.264 profile","scope":"file","category":"Video","severity":"critical","spec":"hlsAuth","clause":"1.3b at most High Profile (MUST); 1.4 High in preference to Main or Baseline (SHOULD)","cite":"1.3b","norm":"MUST · SHOULD","req":"H.264 must be at most High Profile, Level 5.2 (1.3b), and High should be used in preference to Main or Baseline (1.4).","check":"High passes; Main or Baseline warns; anything above High (High 10, 4:2:2, 4:4:4) fails (critical)."},{"id":"level-minimal","title":"The level is the lowest that fits","scope":"file","category":"Video","severity":"warning","spec":"hlsAuth","clause":"1.11 no higher level than the resolution and frame rate need","cite":"1.11","norm":"SHOULD","req":"Content should not signal a higher level than its resolution and frame rate need, so older devices are not shut out.","check":"Compares the signalled level with the lowest that fits; warns when higher."},{"id":"gop-length","title":"The key-frame interval the service intends","scope":"file","category":"Video","severity":"warning","spec":"hlsAuth","clause":"1.13 key frames (IDRs) every two seconds","cite":"1.13","norm":"SHOULD","req":"Key frames (IDRs) should be present every two seconds.","check":"With no interval set by the service, warns above 2 s. With the service's own interval (for example 5 s), fails when the usual interval differs from it."},{"id":"fps-constant","title":"Constant frame rate","scope":"file","category":"Video","severity":"warning","spec":"hlsAuth","clause":"1.18 frame rates; 8.14 a frame-rate change MUST be marked as a discontinuity","cite":"1.18","norm":"SHOULD","req":"VOD should use a natural frame rate (1.18); a frame-rate change inside a stream must be marked as a discontinuity (8.14), which a single file cannot express.","check":"Warns when frame durations vary (variable frame rate)."},{"id":"fps-range","title":"Frame rate within the ladder range","scope":"file","category":"Video","severity":"critical","spec":"hlsAuth","clause":"1.19 no frame rate above 60 fps (SHALL NOT); the service's range","cite":"1.19","norm":"SHALL NOT","req":"Frame rates above 60 fps shall not be used.","check":"Fails (critical) above 60 fps; warns outside the service's own frame-rate range."},{"id":"colour-expected","title":"The colour description the service standardises on","scope":"file","category":"Colour","severity":"warning","spec":"hlsAuth","clause":"1.21 a single colour space: the one the service standardises on","cite":"1.21","norm":"SHOULD · Service","req":"Streams should use a single colour space (1.21); the service names which one in its profile.","check":"Only with the service's expected colour: fails when a rendition carries another."},{"id":"hls-bandwidth","title":"BANDWIDTH is the measured peak","scope":"playlist","category":"Delivery","severity":"critical","spec":"hlsAuth","clause":"1.27 VOD: the measured peak within 10 % of BANDWIDTH; RFC 8216 §4.3.4.2 BANDWIDTH is the peak segment bit rate","cite":"1.27","norm":"MUST","req":"BANDWIDTH is the peak segment bit rate: the busiest run of segments lasting 0.5 to 1.5 target durations (RFC 8216). For VOD, Apple requires the measured peak within 10 % of it.","check":"Measures every segment's size and computes the peak exactly as the RFC defines it; fails (critical) when it is more than 10 % above or below BANDWIDTH."},{"id":"peak-ratio","title":"Peaks stay near the average","scope":"file","category":"Video","severity":"warning","spec":"hlsAuth","clause":"1.30 VOD peak at most 200 % of the average; the peak per segment, as RFC 8216 §4.1 defines it","cite":"1.30","norm":"SHOULD","req":"For VOD, the peak bit rate should be no more than 200 % of the average. RFC 8216 measures the peak per segment.","check":"Cuts the video into segments as a packager would and compares the busiest segment with the average; warns above the ratio (default 2)."},{"id":"frame-rates","title":"Frame rates consistent across renditions","scope":"ladder","category":"Ladder","severity":"info","spec":"hlsAuth","clause":"1.31 variants MAY have different frame rates","cite":"1.31","norm":"MAY","req":"Variants may have different frame rates.","check":"Information: lists the frame rates across renditions."},{"id":"hdr-metadata","title":"HDR10 static metadata present","scope":"file","category":"Colour","severity":"warning","spec":"hlsAuth","clause":"1.35 HDR10: mastering display colour volume and content light level information SHOULD be present","cite":"1.35","norm":"SHOULD","req":"HDR10 should carry the mastering display colour volume and content light level information.","check":"Warns when the mdcv/clli boxes are missing (SEI messages in the stream are not read)."},{"id":"audio-codec","title":"An HLS audio codec","scope":"file","category":"Audio","severity":"warning","spec":"hlsAuth","clause":"2.2 and 2.5 supported audio codecs; 2.3 stereo AAC MUST be provided","cite":"2.2","norm":"Defines","req":"Apple lists the supported audio codecs (2.2 stereo, 2.5 multichannel) and requires stereo AAC or HE-AAC to be provided (2.3). The audit prefers AAC in every rendition; another listed codec is a warning, not a broken requirement.","check":"AAC passes, other codecs warn; with the service's codec set, anything else fails."},{"id":"hls-iframes","title":"I-frame playlists for scrubbing","scope":"playlist","category":"Delivery","severity":"critical","spec":"hlsAuth","clause":"6.1 I-frame playlists MUST be provided for scrubbing and scanning","cite":"6.1","norm":"MUST","req":"I-frame playlists must be provided so players can show pictures while scrubbing and scanning.","check":"Fails (critical) when the multivariant playlist lists none."},{"id":"fragments","title":"Movie fragments are continuous","scope":"file","category":"Container","severity":"critical","spec":"hlsAuth","clause":"7.3 fMP4 decode times continue from segment to segment; RFC 8216 §3","cite":"7.3","norm":"MUST","req":"In fMP4 each fragment's decode time must follow on from the previous one (Apple 7.3); media must be continuous across segments (RFC 8216 §3).","check":"Fails (critical) on a sequence gap, a decode time going back, or a moof without its mdat."},{"id":"gop-fixed","title":"A fixed key-frame interval","scope":"file","category":"Video","severity":"warning","spec":"hlsAuth","clause":"7.4 segments start with an IDR; 7.6 segments of a nominal duration","cite":"7.4","norm":"SHOULD","req":"Segments should have a nominal duration (7.6), and must start with an IDR (7.4; checked by the key-frame rule). A fixed key-frame interval is how an encoder makes equal segments possible.","check":"Finds the usual GOP; passes when every GOP matches, notes a few short GOPs (chunk joins) as information, warns when the interval varies widely."},{"id":"gop-max","title":"No key-frame interval longer than allowed","scope":"file","category":"Video","severity":"critical","spec":"hlsAuth","clause":"7.4 segments start with an IDR; 7.7 no segment more than 0.5 s over the target duration","cite":"7.4","norm":"MUST","req":"Segments must start with an IDR (7.4) and must not run more than 0.5 s over the target duration (7.7), so no GOP may be longer than that.","check":"Only with the service's longest allowed GOP: fails (critical) when a GOP is longer."},{"id":"hls-starts-idr","title":"Segments start with a key frame","scope":"playlist","category":"Delivery","severity":"critical","spec":"hlsAuth","clause":"7.4 video segments MUST start with an IDR frame","cite":"7.4","norm":"MUST","req":"Video segments must start with an IDR frame.","check":"Opens the first, middle and last segment of each playlist; fails (critical) when one does not start with a key frame."},{"id":"key-is-idr","title":"Every key frame is a random access point","scope":"file","category":"Video","severity":"critical","spec":"hlsAuth","clause":"7.4 video segments MUST start with an IDR frame","cite":"7.4","norm":"MUST","req":"Video segments must start with an IDR frame.","check":"From sampled frames: every key frame in the index is an IDR; fails (critical) otherwise."},{"id":"hls-target-duration","title":"A 6-second target duration","scope":"playlist","category":"Delivery","severity":"warning","spec":"hlsAuth","clause":"7.5 target durations SHOULD be 6 seconds","cite":"7.5","norm":"SHOULD","req":"Target durations should be 6 seconds.","check":"Warns on any other target, unless the service's profile names that segment length."},{"id":"hls-same-duration","title":"Every playlist covers the same duration","scope":"playlist","category":"Delivery","severity":"critical","spec":"hlsAuth","clause":"8.3 and 8.7 every playlist covers the same duration of content","cite":"8.3","norm":"MUST","req":"Audio and video playlists must contain the same duration of content; VOD playlists must cover the same time range.","check":"Fails (critical) when playlist durations differ by more than 50 ms."},{"id":"track-durations","title":"Video and audio are the same length","scope":"file","category":"Container","severity":"warning","spec":"hlsAuth","clause":"8.3 audio and video cover the same duration (applied to the tracks of one file)","cite":"8.3","norm":"Adapted","req":"Apple 8.3 says audio and video playlists must cover the same duration of content. The audit adapts this to the audio and video tracks inside each file and grades it as a warning, since a few hundred milliseconds at the end is common and harmless.","check":"Track lengths within 0.1 s pass; up to 0.5 s warns; more fails (as a warning)."},{"id":"hls-playlist-type","title":"VOD playlists say so","scope":"playlist","category":"Delivery","severity":"critical","spec":"hlsAuth","clause":"8.6 VOD media playlists MUST carry EXT-X-PLAYLIST-TYPE:VOD","cite":"8.6","norm":"MUST","req":"VOD media playlists must carry EXT-X-PLAYLIST-TYPE:VOD.","check":"Fails (critical) when a finished playlist (ENDLIST) is not marked VOD."},{"id":"hls-aligned","title":"Segment boundaries aligned across variants","scope":"playlist","category":"Delivery","severity":"critical","spec":"hlsAuth","clause":"8.22 segment boundaries at the same times in every variant (SHOULD; MUST on AirPlay 2 TVs)","cite":"8.22","norm":"SHOULD · MUST","req":"All variants should have segment boundaries at the same times (a MUST for AirPlay 2 TVs).","check":"Compares the running sum of EXTINF across variants; fails (critical) at the first boundary that differs by more than 50 ms."},{"id":"idr-aligned","title":"Key frames aligned across renditions","scope":"ladder","category":"Ladder","severity":"critical","spec":"hlsAuth","clause":"8.22 segment boundaries at the same times in every variant (SHOULD; MUST on AirPlay 2 TVs); 7.4","cite":"8.22","norm":"SHOULD · MUST","req":"All variants should have segment boundaries at the same points in time (8.22; a MUST for AirPlay 2 TVs), each segment starting with an IDR (7.4).","check":"Every key frame of every rendition has a key frame at the same moment in all the others; fails (critical) otherwise."},{"id":"hls-codecs","title":"CODECS names what the segments hold","scope":"playlist","category":"Delivery","severity":"critical","spec":"hlsAuth","clause":"9.1 CODECS MUST be present; RFC 8216 §4.3.4.2 it lists every format in the segments","cite":"9.1","norm":"MUST · SHOULD","req":"Apple requires CODECS on every variant; RFC 8216 says it must list every format the segments carry.","check":"Opens a few segments per variant and compares their codec strings with CODECS: fails (critical) when missing or naming another profile or level, warns when only the constraint flags differ."},{"id":"hls-resolution","title":"RESOLUTION present and matching","scope":"playlist","category":"Delivery","severity":"critical","spec":"hlsAuth","clause":"9.2 RESOLUTION MUST be present on a variant with video","cite":"9.2","norm":"MUST","req":"Apple requires RESOLUTION on every variant with video.","check":"Fails (critical) when missing; warns when it differs from the pictures in the segments."},{"id":"audio-channels","title":"Stereo or mono","scope":"file","category":"Audio","severity":"critical","spec":"hlsAuth","clause":"9.6 multichannel audio MUST be in separate audio streams","cite":"9.6","norm":"MUST","req":"Multichannel audio must be delivered as separate audio streams, not muxed into video renditions.","check":"Fails (critical) above two channels in a rendition; warns above the service's own limit."},{"id":"hls-independent","title":"Independent segments declared","scope":"playlist","category":"Delivery","severity":"warning","spec":"hlsAuth","clause":"9.11 with segments starting at an IDR, EXT-X-INDEPENDENT-SEGMENTS SHOULD be in the multivariant playlist","cite":"9.11","norm":"SHOULD","req":"When segments start with an IDR, the multivariant playlist should carry EXT-X-INDEPENDENT-SEGMENTS.","check":"Warns when the probed segments start with key frames but the tag is missing."},{"id":"hls-average-bandwidth","title":"AVERAGE-BANDWIDTH present and right","scope":"playlist","category":"Delivery","severity":"critical","spec":"hlsAuth","clause":"9.14 AVERAGE-BANDWIDTH MUST be present; 1.26 VOD: within 10 % of the average segment bit rate","cite":"9.14","norm":"MUST","req":"Apple requires AVERAGE-BANDWIDTH on every variant (RFC 8216 makes it optional), and for VOD the measured average within 10 % of it.","check":"Fails (critical) when it is missing, or more than 10 % off the average of every segment."},{"id":"hls-frame-rate","title":"FRAME-RATE present and matching","scope":"playlist","category":"Delivery","severity":"critical","spec":"hlsAuth","clause":"9.15 FRAME-RATE MUST be present on a variant with video; RFC 8216 §4.3.4.2 the maximum frame rate","cite":"9.15","norm":"MUST","req":"Apple requires FRAME-RATE on every variant with video; RFC 8216 defines it as the maximum frame rate, to three decimals.","check":"Fails (critical) when missing; warns when it differs from the segments by more than 1 %."},{"id":"closed-gop","title":"Closed GOPs","scope":"file","category":"Video","severity":"warning","spec":"rfc8216","clause":"§3 a segment decodes on its own (H.264: SHOULD contain an IDR)","cite":"§3","norm":"SHOULD","req":"Each segment should carry what a decoder needs to decode it; a segment of H.264 should contain an IDR.","check":"From sampled frames: warns when frames after a key frame refer back to the previous GOP (open GOP)."},{"id":"hls-segment-durations","title":"Segments within the target duration","scope":"playlist","category":"Delivery","severity":"critical","spec":"rfc8216","clause":"§4.3.3.1 every EXTINF, rounded, at most TARGETDURATION; Apple 7.7 no segment more than 0.5 s over it","cite":"§4.3.3.1","norm":"MUST","req":"Every EXTINF, rounded, must be at most TARGETDURATION (RFC 8216); Apple forbids segments more than 0.5 s over it.","check":"Fails (critical) listing the segments that break either."},{"id":"segment-lengths","title":"A segment length fits every rendition","scope":"ladder","category":"Ladder","severity":"critical","spec":"rfc8216","clause":"§4.3.3.1 target duration; Apple 7.5–7.7 (6 s target, no segment more than 0.5 s over it)","cite":"§4.3.3.1","norm":"MUST · SHOULD","req":"Every segment, rounded, must fit within the target duration (RFC 8216 §4.3.3.1). Apple asks for 6 s targets (7.5) and no segment more than 0.5 s over the target (7.7).","check":"Cuts each rendition as a packager would for each segment length the service uses: passes when one fits exactly, warns with the segments that run long, fails (critical) when renditions would be cut at different moments."},{"id":"hls-reachable","title":"Every playlist and segment can be fetched","scope":"playlist","category":"Delivery","severity":"critical","spec":"rfc8216","clause":"§6.2.1 every segment a playlist lists MUST be available for download","cite":"§6.2.1","norm":"MUST","req":"Every segment a playlist lists must be available for immediate download.","check":"Fetches every playlist and asks for every segment's size; fails (critical) on any that do not answer."},{"id":"hls-same-target","title":"One target duration across the variants","scope":"playlist","category":"Delivery","severity":"critical","spec":"rfc8216","clause":"§6.2.4 every media playlist of the variants MUST have the same target duration; Apple 8.2","cite":"§6.2.4","norm":"MUST","req":"Every media playlist of the variants must have the same target duration (RFC 8216 §6.2.4, Apple 8.2).","check":"Fails (critical) when targets differ across variants."},{"id":"same-audio","title":"The same audio in every rendition","scope":"ladder","category":"Ladder","severity":"warning","spec":"rfc8216","clause":"§6.2.4 variants SHOULD contain the same encoded audio bitstream","cite":"§6.2.4","norm":"SHOULD","req":"Variants should carry the same encoded audio bitstream, so switching between them is inaudible.","check":"Warns when codec, sample rate or channel count differ across renditions."},{"id":"hls-version","title":"EXT-X-VERSION matches the tags used","scope":"playlist","category":"Delivery","severity":"critical","spec":"rfc8216","clause":"§7 EXT-X-VERSION MUST cover what the playlist uses; PROGRAM-ID was removed in version 6","cite":"§7","norm":"MUST","req":"A playlist must declare an EXT-X-VERSION that covers the tags it uses (decimal durations need 3, byte ranges 4, EXT-X-MAP 6); PROGRAM-ID was removed in version 6.","check":"Fails (critical) when a playlist uses tags beyond its declared version, or ones its version removed."},{"id":"even-size","title":"Even picture dimensions","scope":"file","category":"Video","severity":"critical","spec":"h264","clause":"7.4.2.1.1 frame cropping: 4:2:0 crops in steps of two samples","cite":"7.4.2.1.1","norm":"MUST","req":"With 4:2:0 chroma, H.264 crops in steps of two samples, so an odd width or height cannot be coded exactly.","check":"Fails (critical) on an odd width or height."},{"id":"b-frames","title":"B-frames only where the profile allows","scope":"file","category":"Video","severity":"critical","spec":"h264","clause":"A.2.1 Baseline profile: I and P slices only","cite":"A.2.1","norm":"MUST","req":"Baseline profile allows only I and P slices.","check":"Fails (critical) when a Baseline stream has B-frames; otherwise describes the B-frame structure."},{"id":"level-holds","title":"The signalled level holds","scope":"file","category":"Video","severity":"critical","spec":"h264","clause":"Annex A, Table A-1","cite":"Annex A","norm":"MUST","req":"A stream must stay within every limit of the level it signals: frame size, macroblock rate, bit rate and buffer (Table A-1).","check":"Recomputes each limit from the file; fails (critical) if any is exceeded."},{"id":"vbv-holds","title":"The declared VBV never underflows","scope":"file","category":"Video","severity":"critical","spec":"h264","clause":"Annex C hypothetical reference decoder: no buffer underflow at the declared rate","cite":"Annex C","norm":"Defines","req":"Annex C defines the hypothetical reference decoder: a stream delivered at its rate never empties the decoder buffer. The audit applies it to the maxrate and bufsize the encoder wrote into the stream.","check":"Simulates the buffer at those settings; fails (critical) on an underflow."},{"id":"hdr-consistent","title":"HDR signalling is consistent with the samples","scope":"file","category":"Colour","severity":"critical","spec":"h273","clause":"BT.2100 PQ/HLG signalling; Apple 1.7 HDR is HDR10, HLG or Dolby Vision","cite":"BT.2100","norm":"MUST","req":"HDR HEVC must be HDR10, HLG or Dolby Vision (Apple 1.7); the PQ and HLG transfers go with BT.2020 primaries and matrix.","check":"When the transfer says PQ or HLG: fails (critical) unless BT.2020 primaries, matrix and 10-bit samples go with it."},{"id":"range","title":"Limited (TV) range","scope":"file","category":"Colour","severity":"warning","spec":"h273","clause":"video_full_range_flag","cite":"Range flag","norm":"Defines","req":"Defines the full-range flag. Streaming video is normally limited (TV) range.","check":"Warns on full range."},{"id":"colour-signalled","title":"The colour description is signalled","scope":"file","category":"Colour","severity":"critical","spec":"h273","clause":"Tables 2–4: colour primaries, transfer characteristics, matrix coefficients; Apple 1.21","cite":"Tables 2–4","norm":"Defines · SHOULD","req":"H.273 defines the codes for colour primaries, transfer and matrix (2 means unspecified); Apple asks for one colour space per stream (1.21). No standard makes signalling mandatory; the audit treats it as critical because players otherwise guess and colours shift.","check":"Fails (critical) when the colour description is missing or unspecified."},{"id":"colour-consistent","title":"Primaries and matrix agree","scope":"file","category":"Colour","severity":"critical","spec":"h273","clause":"primaries and matrix belong together","cite":"Tables 2, 4","norm":"Defines","req":"Primaries and matrix come as a pair: BT.709 with BT.709, BT.2020 with BT.2020.","check":"Fails (critical) when they are mixed."},{"id":"brands","title":"File-type brands say what the file is","scope":"file","category":"Container","severity":"info","spec":"isobmff","clause":"§4.3 file type box","cite":"§4.3","norm":"Defines","req":"Defines the file-type box, where a file names the specifications it follows.","check":"Information; warns when no ISO base brand is present; fails when a CMAF brand sits on an unfragmented file."},{"id":"display-aspect","title":"The track's display size matches the coded picture","scope":"file","category":"Video","severity":"warning","spec":"isobmff","clause":"§8.3.2 tkhd width/height against the coded size and pixel aspect","cite":"§8.3.2","norm":"Defines","req":"Defines the track header's display width and height.","check":"Warns when the display size disagrees with the coded size and pixel aspect."},{"id":"edit-list","title":"Edit lists are simple","scope":"file","category":"Container","severity":"warning","spec":"isobmff","clause":"§8.6.6 edit list box","cite":"§8.6.6","norm":"Defines","req":"Defines the edit list, which maps media time to presentation time. Several edits are allowed, but many players and packagers only handle one.","check":"Warns when a track's edit list has more than one entry."},{"id":"integrity","title":"The sample tables are consistent","scope":"file","category":"Container","severity":"critical","spec":"isobmff","clause":"sample tables","cite":"Sample tables","norm":"Defines","req":"Defines the sample tables that locate and time every sample.","check":"Counts, offsets, sizes and times agree with the media data. Fails (critical) on a structural error."},{"id":"audio-priming","title":"The AAC encoder delay is compensated","scope":"file","category":"Audio","severity":"warning","spec":"priming","clause":"trim the encoder delay (priming); in MP4 with an edit list (ISO 14496-12 §8.6.6)","cite":"TN2258","norm":"Guidance","req":"AAC encoders put priming samples before the sound (commonly 2112); unless playback trims them, audio lags the video. MP4 trims them with an edit list.","check":"Passes when the audio edit list skips the priming; warns when it starts at 0 or is missing."},{"id":"loudness","title":"Integrated loudness on target","scope":"file","category":"Audio","severity":"warning","spec":"r128","clause":"R 128 (h): −23 LUFS ±1 LU; R 128 s2 (g): −20 to −16 LUFS for streams; the target comes from the profile","cite":"R 128 (h)","norm":"Recommends","req":"R 128 sets −23 LUFS (±1 LU) for programmes; its streaming supplement allows −20 to −16 LUFS where platforms do not normalise. The target itself comes from the service profile.","check":"With a loudness measurement: fails outside the profile's target and tolerance. Without one it is listed as not measured, never as a pass."},{"id":"true-peak","title":"True peak below the ceiling","scope":"file","category":"Audio","severity":"warning","spec":"r128","clause":"R 128 (m): true peak at most −1 dBTP","cite":"R 128 (m)","norm":"Recommends","req":"A programme's true peak should not exceed −1 dBTP.","check":"With a measurement: fails above the ceiling (−1 dBTP by default). Without one it is listed as not measured."},{"id":"av-sync","title":"Audio and video in sync","scope":"file","category":"Audio","severity":"critical","spec":"bt1359","clause":"sound may lead vision by 45 ms or lag it by 125 ms before viewers notice; 90 / 185 ms before they object","cite":"Rec. 2","norm":"Recommends","req":"Viewers notice sound leading by about 45 ms or lagging by about 125 ms, and object beyond 90 ms lead or 185 ms lag. The audit treats going past what viewers accept as critical, because they see and hear it.","check":"With a sync measurement: warns past noticeable, fails (critical) past acceptable. Without one it is listed as not measured."},{"id":"audio-bitrate","title":"Enough bits per audio channel","scope":"file","category":"Audio","severity":"warning","spec":"practice","clause":"AAC-LC bit rate per channel; Apple 2.9 lists 32–160 kbit/s for stereo AAC","cite":"—","norm":"Practice","req":"AAC-LC needs roughly 48 kbit/s per channel to sound clean; Apple's table lists 32–160 kbit/s for stereo AAC (2.9).","check":"Warns below the per-channel minimum (48 kbit/s by default; the service may set its own)."},{"id":"audio-rate","title":"A usual sample rate","scope":"file","category":"Audio","severity":"warning","spec":"practice","clause":"44.1 or 48 kHz","cite":"—","norm":"Practice","req":"No Apple item names a sample rate; 44.1 and 48 kHz are what every device decodes.","check":"Warns on other rates; with the service's rate set, fails on any other."},{"id":"bitrate-steps","title":"Bitrate steps down the ladder","scope":"ladder","category":"Ladder","severity":"warning","spec":"practice","clause":"adjacent renditions 1.5–2× apart","cite":"—","norm":"Practice","req":"Adjacent renditions about 1.5–2× apart in bit rate, cheaper as they get smaller.","check":"Fails when a smaller rendition has a higher bit rate; notes steps outside 1.4–2.6×."},{"id":"bits-per-pixel","title":"Enough bits per pixel","scope":"file","category":"Video","severity":"warning","spec":"practice","clause":"bits per pixel per frame","cite":"—","norm":"Practice","req":"Bits per pixel per frame as a rough quality guide; very low values suggest blocking.","check":"Warns below 0.03 (0.02 for HEVC) under a bitrate target or a cap the encoder hit; information under CRF, where few bits mean a simple picture."},{"id":"decode-integrity","title":"Every frame decodes cleanly","scope":"file","category":"Decoding","severity":"critical","spec":"practice","clause":"every frame decodes without an error, checked with FFmpeg's decoders","cite":"—","norm":"Practice","req":"Every frame of every track decodes without an error. No clause of the codec standards is cited: a damaged payload breaks their syntax in ways a decoder reports, and viewers see it, so the audit treats it as critical.","check":"On request, decodes every video and audio frame with FFmpeg, single-threaded; fails (critical) with the number of damaged frames, when the first ones are shown and a jump to their bytes. Encrypted tracks are not decoded. Without the decode it is listed as not measured."},{"id":"fast-start","title":"The movie box comes before the media data","scope":"file","category":"Container","severity":"critical","spec":"practice","clause":"progressive download: the index (moov) before the media data, as ffmpeg -movflags +faststart writes it","cite":"—","norm":"Practice","req":"No standard requires it. For progressive download, a player reading the MP4 over HTTP needs the index (moov) before the media data; otherwise it must fetch the whole file first.","check":"In an unfragmented MP4, moov starts before mdat. Fails (critical) when it comes after."},{"id":"has-audio","title":"Audio is present","scope":"file","category":"Container","severity":"critical","spec":"practice","clause":"audio in every rendition, when the service requires it","cite":"—","norm":"Service","req":"Only when the service's profile requires audio in every rendition.","check":"Fails when a rendition has no audio and the profile requires it; otherwise information."},{"id":"interleaved","title":"Audio and video chunks alternate","scope":"file","category":"Container","severity":"warning","spec":"practice","clause":"progressive download: audio and video chunks interleaved","cite":"—","norm":"Practice","req":"Audio and video samples stored close together, so a player reading from the start has both. The MP4 format itself allows any layout.","check":"How far apart audio and video chunks sit; warns when they are poorly interleaved."},{"id":"label-matches-size","title":"Rendition names match their picture size","scope":"ladder","category":"Ladder","severity":"warning","spec":"practice","clause":"rendition names","cite":"—","norm":"Practice","req":"A rendition named NNNp belongs to that size tier, as players and YouTube use the names: its short side is at most NNN, and it does not fit the tier below's 16:9 frame (a 1920×800 film is 1080p).","check":"Warns when a picture is larger than its name, or small enough for the tier below."},{"id":"level-policy","title":"The level stays within the service's cap for the rendition","scope":"file","category":"Video","severity":"critical","spec":"practice","clause":"the service's level cap per rendition (device reach)","cite":"—","norm":"Service","req":"The service's own level cap per rendition size, set in its profile for device reach. Not a standard.","check":"Fails (critical) when a rendition signals a level above the cap for its size and frame rate."},{"id":"one-video-track","title":"Exactly one video track","scope":"file","category":"Container","severity":"critical","spec":"practice","clause":"one video track per rendition file","cite":"—","norm":"Practice","req":"A rendition file carries exactly one video track; players take the first and ignore the rest.","check":"No video track fails; more than one warns."},{"id":"quality","title":"Fidelity to the source","scope":"file","category":"Video","severity":"warning","spec":"practice","clause":"fidelity to the source","cite":"—","norm":"Practice","req":"Fidelity to the source, measured with PSNR, SSIM or VMAF.","check":"With a measurement against the source: warns below PSNR 30 dB, SSIM 0.9 or VMAF 70. Without the source it is listed as not measured."},{"id":"scenecut","title":"Scene-cut key frames off in a fixed-GOP ladder","scope":"file","category":"Video","severity":"info","spec":"practice","clause":"fixed GOP for ABR","cite":"—","norm":"Practice","req":"In a fixed-GOP ladder, scene-cut key frames are switched off so key frames fall only on the grid.","check":"Only when the service sets a GOP: notes when scene-cut detection is on."},{"id":"square-pixels","title":"Square pixels","scope":"file","category":"Video","severity":"warning","spec":"practice","clause":"square pixels (sample aspect 1:1) in streaming renditions","cite":"—","norm":"Practice","req":"Streaming renditions use square pixels (sample aspect 1:1), so every player scales them the same way.","check":"Warns when the stream signals non-square pixels."},{"id":"vbv","title":"The encoder bounded the peak bitrate","scope":"file","category":"Video","severity":"warning","spec":"practice","clause":"capped CRF for ABR","cite":"—","norm":"Practice","req":"Streaming encoders cap the peak rate (capped CRF: maxrate and bufsize) so a rendition's bandwidth is predictable.","check":"Reads the encoder settings stored in the stream; warns when no cap was set."}],"gaps":[{"area":"Video","items":[["1.10","SHOULD","Parameter sets stored in the sample description (avc1, hvc1) rather than in the samples (avc3, hev1).","Readable from the file; a candidate rule."],["1.14","MUST","Interlaced sources must be deinterlaced.","Partly readable (interlace flags in the stream); a candidate rule."],["1.18","SHOULD","VOD uses a natural frame rate from the supported list (23.976 to 60 fps).","The audit checks only the 60 fps ceiling."],["1.33","SHOULD","All variants have identical aspect ratios.","Readable across a ladder; a candidate rule."]]},{"area":"Audio","items":[["2.3","MUST","Stereo AAC (or HE-AAC) provided for the content.","The audit checks each file, not that some rendition carries stereo."],["2.18–2.23","SHOULD","Loudness information carried with the audio (a loudness box, or AAC programme reference level).","Not read; a candidate rule."],["2.4","SHOULD NOT","No HE-AAC above 64 kbit/s.","Not checked."]]},{"area":"Playlists","items":[["6.2","SHOULD","Dense I-frame renditions at one frame per second.","The audit checks that I-frame playlists exist, not their density."],["7.6 · 8.1","SHOULD / MUST","Segments nominally 6 s; EXTINF sums within one frame of the real content duration.","Durations are read from the playlists, not measured in every segment."],["9.16","MUST","VIDEO-RANGE on HDR variants.","Not checked yet; the probed segments carry the transfer to compare with."],["DASH","—","MPD manifests and their segments.","Refused as not audited."]]},{"area":"Accessibility","items":[["4.x · 5.x","SHOULD / MUST","Captions and subtitles, and how they are declared.","Not checked."]]},{"area":"Beyond the files","items":[["H.264 · H.273","—","Full bitstream conformance, as a reference decoder would verify it.","The audit checks levels, profiles, VUI and timing; with the full decode it also finds damage FFmpeg's decoders report, which is not every conformance rule."],["—","—","Picture quality against the original upload.","Needs the source; available on the command line (--measure --source)."]]}]}</script>
+<script>
+(() => {
+  const D = JSON.parse(document.getElementById('data').textContent);
+  // Opened in Claude (a shared store) the page records reviews; anywhere else it is a reference.
+  const hosted = !!(window.claude && typeof window.claude.use === 'function');
+  if (!hosted) document.body.classList.add('static');
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, attrs, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v == null || v === false) continue;
+      if (k === 'class') n.className = v; else if (k === 'text') n.textContent = v; else n.setAttribute(k, v === true ? '' : v);
+    }
+    for (const c of kids.flat()) if (c != null) n.append(c);
+    return n;
+  };
+  const SRC = Object.fromEntries(D.sources.map((s) => [s.key, s]));
+  const normClass = (n) => /MUST|SHALL/.test(n) ? 'n-must' : /SHOULD|Recommends|Guidance/.test(n) ? 'n-should' : /Practice|Service/.test(n) ? 'n-prac' : 'n-may';
+  const SEV = { critical: 'Up to critical', warning: 'Up to warning', info: 'Information' };
+  const VER = { text: 'Checked against the text', unread: 'Not re-read', practice: 'Practice' };
+  const LABEL = { confirmed: 'Confirmed', question: 'Question', disagree: 'Disagree' };
+
+  // ---- masthead facts
+  const nText = D.rules.filter((r) => SRC[r.spec].checked === 'text').length;
+  const nUnread = D.rules.filter((r) => SRC[r.spec].checked === 'unread').length;
+  const nPrac = D.rules.filter((r) => SRC[r.spec].checked === 'practice').length;
+  const standards = D.sources.filter((s) => s.key !== 'practice').length;
+  for (const [k, v] of [['Rules', D.rules.length], ['Standards', standards], ['Checked against the text', nText], ['Not re-read', nUnread], ['Practice, not a standard', nPrac]]) $('facts').append(el('div', null, el('dt', { text: k }), el('dd', { class: 'num', text: String(v) })));
+
+  // ---- sources
+  for (const s of D.sources) {
+    $('sources').append(el('tr', null,
+      el('td', null, el('a', { href: s.url, target: '_blank', rel: 'noopener', class: 'src', text: s.short }), el('div', { class: 'clause', text: s.name })),
+      el('td', { text: s.edition }),
+      el('td', { text: s.access }),
+      el('td', { class: 'num', text: String(s.count) }),
+      el('td', null, el('span', { class: `tag v-${s.checked}`, text: s.checked === 'text' ? 'Checked' : VER[s.checked] })),
+      el('td', { class: 'note', text: s.note })));
+    $('f-src').append(el('option', { value: s.key, text: s.short }));
+  }
+
+  // ---- rules
+  const rows = new Map(); // id -> { art, rule, ui }
+  for (const s of D.sources) {
+    const list = D.rules.filter((r) => r.spec === s.key);
+    const meta = el('span', { class: 'gmeta' });
+    const group = el('div', { class: 'group', 'data-src': s.key },
+      el('div', { class: 'ghead' }, el('h3', { text: s.short }), el('a', { href: s.url, target: '_blank', rel: 'noopener', class: 'gmeta', text: s.name }), meta));
+    group._meta = meta;
+    for (const r of list) {
+      const ui = {};
+      ui.btns = ['confirmed', 'question', 'disagree'].map((st) => el('button', { type: 'button', class: `rv-btn ${st === 'confirmed' ? 'b-ok' : st === 'question' ? 'b-q' : 'b-no'}`, 'aria-pressed': 'false', 'data-st': st, text: st === 'confirmed' ? 'Confirm' : LABEL[st] }));
+      ui.meta = el('span', { class: 'rv-meta', text: 'Not reviewed' });
+      ui.note = el('textarea', { id: `note-${r.id}`, rows: '1', placeholder: 'Note (optional): what to check or change', 'aria-label': `Note on ${r.title}` });
+      ui.box = el('div', { class: 'review' }, el('div', { class: 'rv-row' }, ui.btns, ui.meta), ui.note);
+      const art = el('article', { class: 'rule', id: `r-${r.id}` },
+        el('div', { class: r.cite.length > 8 ? 'cite long' : 'cite' }, r.cite, el('small', { text: r.scope === 'ladder' ? 'ladder' : r.category.toLowerCase() })),
+        el('div', { class: 'rbody' },
+          el('div', { class: 'rtop' }, el('h3', { text: r.title }), el('span', { class: 'rid', text: r.id })),
+          el('p', { class: 'clause', text: r.clause }),
+          el('div', { class: 'tags' },
+            el('span', { class: `tag ${normClass(r.norm)}`, text: r.norm }),
+            el('span', { class: `tag s-${r.severity}`, text: SEV[r.severity] }),
+            el('span', { class: `tag v-${SRC[r.spec].checked}`, text: VER[SRC[r.spec].checked] })),
+          el('dl', { class: 'says' },
+            el('div', null, el('dt', { text: r.spec === 'practice' ? 'The practice' : 'The source says' }), el('dd', { text: r.req })),
+            el('div', null, el('dt', { text: 'The audit checks' }), el('dd', { text: r.check }))),
+          ui.box));
+      rows.set(r.id, { art, rule: r, ui, group });
+      group.append(art);
+    }
+    $('groups').append(group);
+  }
+
+  // ---- gaps
+  for (const g of D.gaps) {
+    $('gaps').append(el('div', { class: 'gap' }, el('h3', { text: g.area }), el('ul', null, g.items.map(([item, norm, what, why]) =>
+      el('li', null, el('span', { class: 'gi', text: item }), el('span', null, norm !== '—' ? el('span', { class: `tag ${normClass(norm)}`, text: norm }) : null, el('div', { text: what })), el('span', { class: 'gw', text: why }))))));
+  }
+  $('foot').textContent = `Built from the audit engine of Vidscope ${D.version}; citations checked against the texts on ${D.checked}. The rule list comes from the engine itself, so this register lists exactly what the audit runs. Requirements are summarised, not quoted; the sources are authoritative.`;
+
+  // ---- review state
+  let reviews = {};
+  let people = {};
+  let canWrite = true;
+  const fmtDate = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return ''; } };
+  function paintRow(id) {
+    const { ui } = rows.get(id);
+    const rv = reviews[id];
+    for (const b of ui.btns) b.setAttribute('aria-pressed', String(!!rv && rv.status === b.dataset.st));
+    if (rv && rv.status) {
+      const who = (rv.by && people[rv.by] && people[rv.by].name) || 'someone';
+      ui.meta.textContent = `${LABEL[rv.status]} by ${who}${rv.at ? ` · ${fmtDate(rv.at)}` : ''}`;
+    } else ui.meta.textContent = rv && rv.note ? 'Note only' : 'Not reviewed';
+    if (document.activeElement !== ui.note) ui.note.value = (rv && rv.note) || '';
+  }
+  function paintProgress() {
+    const n = D.rules.length;
+    const c = { confirmed: 0, question: 0, disagree: 0 };
+    for (const r of D.rules) { const s = reviews[r.id]?.status; if (s in c) c[s]++; }
+    const bar = $('bar');
+    bar.replaceChildren(
+      el('span', { class: 'b-ok', style: `width:${(c.confirmed / n) * 100}%` }),
+      el('span', { class: 'b-q', style: `width:${(c.question / n) * 100}%` }),
+      el('span', { class: 'b-no', style: `width:${(c.disagree / n) * 100}%` }));
+    const open = n - c.confirmed - c.question - c.disagree;
+    $('progress-text').textContent = `${c.confirmed} confirmed · ${c.question} with a question · ${c.disagree} disagreed · ${open} not reviewed yet, of ${n} rules`;
+    bar.setAttribute('aria-label', $('progress-text').textContent);
+  }
+  function paintAll() { for (const id of rows.keys()) paintRow(id); paintProgress(); applyFilters(); }
+
+  // ---- filters
+  function applyFilters() {
+    const src = $('f-src').value, ver = $('f-ver').value, rev = $('f-rev').value, q = $('f-q').value.trim().toLowerCase();
+    let shown = 0;
+    const perGroup = new Map();
+    for (const { art, rule, group } of rows.values()) {
+      const st = reviews[rule.id]?.status || 'none';
+      const hay = `${rule.id} ${rule.title} ${rule.clause} ${rule.req} ${rule.check} ${rule.cite}`.toLowerCase();
+      const ok = (!src || rule.spec === src) && (!ver || SRC[rule.spec].checked === ver) && (!rev || st === rev) && (!q || hay.includes(q));
+      art.hidden = !ok;
+      if (ok) shown++;
+      const g = perGroup.get(group) || { shown: 0, total: 0, reviewed: 0 };
+      g.total++; if (ok) g.shown++; if (st !== 'none') g.reviewed++;
+      perGroup.set(group, g);
+    }
+    for (const [group, g] of perGroup) {
+      group.hidden = g.shown === 0;
+      group._meta.textContent = `${g.total} ${g.total === 1 ? 'rule' : 'rules'} · ${g.reviewed} reviewed`;
+    }
+    $('f-count').textContent = `${shown} of ${D.rules.length} rules shown`;
+  }
+  for (const id of ['f-src', 'f-ver', 'f-rev']) $(id).addEventListener('change', applyFilters);
+  $('f-q').addEventListener('input', applyFilters);
+
+  function setReadOnly(message) {
+    canWrite = false;
+    for (const { ui } of rows.values()) {
+      for (const b of ui.btns) b.disabled = true;
+      ui.note.readOnly = true;
+      if (!ui.box.querySelector('.ro')) ui.box.append(el('p', { class: 'ro', text: message }));
+    }
+  }
+
+  paintAll();
+  $('progress-text').textContent = 'Reviews load when the page opens in Claude.';
+
+  (async () => {
+    const claude = window.claude;
+    if (!claude || typeof claude.use !== 'function') { setReadOnly('Reviews can be recorded when this page is opened in Claude.'); return; }
+    const [db, user] = await Promise.all([claude.use('db'), claude.use('user')]);
+    if (!db) { setReadOnly('Reviews cannot be saved in this view.'); $('progress-text').textContent = 'Reviews are not available in this view.'; return; }
+    const me = user ? await user.me() : { id: null };
+    const may = user ? await user.can('data.write') : null;
+    if (may === false) setReadOnly('You can read this register. To record reviews, ask its owner for Contributor access.');
+
+    const resolve = async () => {
+      if (!user) return;
+      const ids = [...new Set(Object.values(reviews).map((r) => r.by).filter(Boolean))];
+      if (ids.length) people = await user.profiles(ids);
+    };
+    db.collection('reviews').onSnapshot(async (snap) => {
+      const next = {};
+      for (const d of snap.docs) if (d.exists) next[d.id] = d.data();
+      reviews = next;
+      await resolve();
+      paintAll();
+    }, () => { setReadOnly('Reviews stopped loading; reload the page to try again.'); });
+
+    // One write at a time per rule.
+    const chains = new Map();
+    const save = (id, patch) => {
+      if (!canWrite) return;
+      const body = { ...(reviews[id] || {}), ...patch, by: me.id || null, at: new Date().toISOString() };
+      reviews = { ...reviews, [id]: body };
+      paintRow(id); paintProgress(); applyFilters();
+      const prev = chains.get(id) || Promise.resolve();
+      const run = prev.then(() => db.doc(`reviews/${id}`).set(body)).catch((e) => {
+        if (e && e.code === 'invalid_argument') setReadOnly('Your access does not allow saving reviews. Ask the owner for Contributor access.');
+        else rows.get(id).ui.meta.textContent = 'Not saved: check your connection and try again.';
+      });
+      chains.set(id, run);
+    };
+    for (const [id, { ui }] of rows) {
+      for (const b of ui.btns) b.addEventListener('click', () => {
+        const cur = reviews[id]?.status;
+        save(id, { status: cur === b.dataset.st ? null : b.dataset.st });
+      });
+      let t = null;
+      const flush = () => { clearTimeout(t); t = null; const v = ui.note.value.trim(); if (v !== ((reviews[id] && reviews[id].note) || '')) save(id, { note: v }); };
+      ui.note.addEventListener('input', () => { clearTimeout(t); t = setTimeout(flush, 1200); });
+      ui.note.addEventListener('blur', flush);
+    }
+  })();
+})();
+</script>

@@ -107,7 +107,8 @@ export class AuditView {
       this.app.store.set({ auditProfile: select.value });
     });
     this.statusEl = h('span', { class: 'fstatus' });
-    const bar = h('div', { class: 'fhead ahead' }, h('label', { class: 'alabel' }, 'profile', select));
+    const bar = h('div', { class: 'fhead ahead' }, h('label', { class: 'alabel' }, 'profile', select),
+      h('a', { class: 'btn', href: 'standards.html', target: '_blank', rel: 'noopener', title: 'Every rule of the audit, the standard and item it cites, and what it checks' }, 'Standards'));
     if (result) {
       const n = { bad: 0, warn: 0, info: 0, good: 0 };
       for (const c of result.checks) {

@@ -66,7 +66,8 @@ export class ReportView {
       body.append(h('div', { class: 'rpintro' },
         h('p', { class: 'prose lead' }, 'Give a converted video and get its whole ladder audited against the streaming standards and the conversion service\'s own contract: every rendition, the checks across renditions, what to fix and how.'),
         h('ul', { class: 'prose' }, (s.auditServer?.examples ?? EXAMPLES).map((x) => h('li', null, x))),
-        h('p', { class: 'prose' }, 'The audit server looks the video up in the registry, finds each rendition on the storage and reads only what the rules need: the index in full and a budget of frame data, a few megabytes per rendition. Any rendition then opens in the viewer, with every byte, frame and chart.')));
+        h('p', { class: 'prose' }, 'The audit server looks the video up in the registry, finds each rendition on the storage and reads only what the rules need: the index in full and a budget of frame data, a few megabytes per rendition. Any rendition then opens in the viewer, with every byte, frame and chart.'),
+        h('p', { class: 'prose' }, 'Every rule names the standard and item it comes from; ', h('a', { href: 'standards.html', target: '_blank', rel: 'noopener' }, 'the standards register'), ' lists them all, with links to the official documents.')));
       return body;
     }
     if (rep.status === 'loading') {
@@ -131,6 +132,7 @@ export class ReportView {
     body.append(h('div', { class: 'rpactions' },
       h('button', { class: 'btn', disabled: d.renditions.filter((r) => r.size).length < 2 ? '' : null, onclick: () => this.app.compareRemote(d), 'data-tip': 'Open every rendition side by side: the ladder, key frames, the frame each shows at a moment, pixels. The viewer reads the files through the audit server; for long videos that is more than the audit read.' }, 'Compare the renditions'),
       s.auditServer?.decode && !d.decoded ? h('button', { class: 'btn', onclick: () => this.app.runCheck(d.query, d.profile, { decode: true }), 'data-tip': 'Decode every video and audio frame of every rendition with FFmpeg, to find damage the structure does not show. Each rendition is downloaded in full; a long video takes a few minutes.' }, 'Decode every frame') : null,
+      h('a', { class: 'btn', href: 'standards.html', target: '_blank', rel: 'noopener', title: 'Every rule of the audit, the standard and item it cites, and what it checks' }, 'Standards'),
       h('button', { class: 'btn copy', onclick: () => copyText(d.markdown), 'data-tip': 'Copy the report as Markdown' }, 'copy report'),
       h('button', { class: 'btn', onclick: () => download(`check-${d.label}.audit.json`, JSON.stringify(report, null, 2)), 'data-tip': 'Save the JSON report' }, 'JSON'),
       h('button', { class: 'btn', onclick: () => download(`check-${d.label}.sarif`, JSON.stringify(toSarif(report), null, 2)), 'data-tip': 'Save a SARIF 2.1.0 log' }, 'SARIF'),
