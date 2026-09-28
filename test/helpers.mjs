@@ -30,6 +30,19 @@ export function haveFfprobe() {
   return ffprobeOk;
 }
 
+let ffmpegOk;
+export function haveFfmpeg() {
+  if (ffmpegOk === undefined) {
+    try {
+      execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+      ffmpegOk = true;
+    } catch {
+      ffmpegOk = false;
+    }
+  }
+  return ffmpegOk;
+}
+
 export async function open(name) {
   const src = await NodeFileSource.open(sample(name));
   const doc = await openDocument(src);

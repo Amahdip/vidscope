@@ -1,0 +1,605 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Amahdip/vidscope/docs/audit-report.schema.json",
+  "title": "Vidscope audit report",
+  "description": "The result of `vidscope audit`: every file checked against the streaming standards, and every ladder of versions of one content checked as a set.",
+  "type": "object",
+  "required": [
+    "tool",
+    "generated",
+    "expect",
+    "summary",
+    "files",
+    "ladders"
+  ],
+  "properties": {
+    "tool": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "const": "vidscope"
+        },
+        "command": {
+          "const": "audit"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "command"
+      ]
+    },
+    "generated": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expect": {
+      "description": "What the service intends its outputs to be; rules with an expectation check it, rules without check only the standards.",
+      "type": "object",
+      "properties": {
+        "gop": {
+          "type": "number",
+          "description": "seconds between key frames"
+        },
+        "gopMax": {
+          "type": "number"
+        },
+        "fpsMax": {
+          "type": "number"
+        },
+        "fpsMin": {
+          "type": "number"
+        },
+        "peakRatio": {
+          "type": "number",
+          "description": "busiest second ÷ average, at most"
+        },
+        "colour": {
+          "type": "object",
+          "properties": {
+            "primaries": {
+              "type": "integer"
+            },
+            "transfer": {
+              "type": "integer"
+            },
+            "matrix": {
+              "type": "integer"
+            }
+          }
+        },
+        "audio": {
+          "type": "object",
+          "properties": {
+            "codec": {
+              "type": "string"
+            },
+            "sampleRate": {
+              "type": "integer"
+            },
+            "channelsMax": {
+              "type": "integer"
+            },
+            "minBitratePerChannel": {
+              "type": "integer"
+            }
+          }
+        },
+        "loudness": {
+          "type": "object",
+          "properties": {
+            "integrated": {
+              "type": "number"
+            },
+            "tolerance": {
+              "type": "number"
+            },
+            "truePeakMax": {
+              "type": "number"
+            }
+          }
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "overlay": {
+          "type": "object",
+          "properties": {
+            "severity": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "enum": [
+                  "critical",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "levelCap": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "height": {
+                    "type": "integer"
+                  },
+                  "fpsMax": {
+                    "type": "number"
+                  },
+                  "level": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "height",
+                  "level"
+                ]
+              }
+            }
+          },
+          "description": "a service’s own severities per rule and its level cap per rendition (rule level-policy)"
+        }
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/tally"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "file",
+          "facts",
+          "checks"
+        ],
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "the path or URL given"
+          },
+          "file": {
+            "type": "string"
+          },
+          "ms": {
+            "type": "integer"
+          },
+          "facts": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer"
+              },
+              "format": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "duration": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "bytesRead": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "bytes fetched to audit the file: the index in full, then the frame budget"
+              },
+              "requests": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "payload": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "gopsRead": {
+                    "type": "integer"
+                  },
+                  "gops": {
+                    "type": "integer"
+                  },
+                  "gopsFull": {
+                    "type": "integer",
+                    "description": "GOPs read in full (the rest were started within the budget)"
+                  },
+                  "ranges": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "description": "byte ranges [from, to) of frame data read"
+                  }
+                }
+              },
+              "video": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "codec": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "type": "integer"
+                  },
+                  "height": {
+                    "type": "integer"
+                  },
+                  "fps": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "profile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "level": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "description": "level_idc (42 = 4.2)"
+                  },
+                  "depth": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "bitrate": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "peak": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "gop": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "bpp": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "colour": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "primaries/transfer/matrix as in H.273"
+                  },
+                  "timescale": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "levelName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "the level as written, e.g. 4.2 or 5.1"
+                  }
+                }
+              },
+              "audio": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "codec": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "channels": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "bitrate": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "encoder": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "crf": {},
+                  "maxrate": {},
+                  "bufsize": {},
+                  "keyint": {}
+                }
+              },
+              "index": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "offset": {
+                    "type": "integer"
+                  },
+                  "size": {
+                    "type": "integer"
+                  }
+                },
+                "description": "where the index (moov) lies"
+              },
+              "digest": {
+                "type": "object",
+                "properties": {
+                  "index": {
+                    "type": "string",
+                    "description": "SHA-256 of the moov bytes"
+                  },
+                  "ranges": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "integer"
+                        },
+                        "to": {
+                          "type": "integer"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "description": "with --digest: hashes of the bytes read, to compare two reads of the same file"
+              }
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/check"
+            }
+          },
+          "error": {
+            "type": "string",
+            "description": "why the input could not be audited; checks is then empty"
+          },
+          "reason": {
+            "type": "string",
+            "description": "why an input could not be audited, in a form a service can count: unavailable:missing, unavailable:no-range, error"
+          }
+        }
+      }
+    },
+    "ladders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "files",
+          "checks"
+        ],
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/check"
+            }
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "the paths or URLs given, in the same order as files"
+          }
+        }
+      }
+    },
+    "specs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "required": [
+        "id",
+        "category",
+        "level",
+        "title",
+        "text",
+        "spec"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "the rule, stable across versions (e.g. colour-signalled)"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "Container",
+            "Video",
+            "Colour",
+            "Audio",
+            "Ladder"
+          ]
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn",
+            "fail",
+            "info",
+            "skip"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "CRITICAL",
+            "WARNING",
+            "INFO"
+          ],
+          "description": "present on warn and fail only: what the finding means for viewers and players"
+        },
+        "title": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "spec": {
+          "type": "string",
+          "description": "key into specs"
+        },
+        "clause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": {
+          "description": "what was measured"
+        },
+        "expected": {
+          "description": "what the rule or the expectation wanted"
+        },
+        "offset": {
+          "type": "integer",
+          "description": "byte offset in the file of the box, parameter set or sample the finding is about"
+        },
+        "remedy": {
+          "type": "object",
+          "properties": {
+            "cause": {
+              "type": "string"
+            },
+            "fix": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "tally": {
+      "type": "object",
+      "properties": {
+        "pass": {
+          "type": "integer"
+        },
+        "warn": {
+          "type": "integer"
+        },
+        "fail": {
+          "type": "integer"
+        },
+        "info": {
+          "type": "integer"
+        },
+        "skip": {
+          "type": "integer"
+        },
+        "critical": {
+          "type": "integer"
+        },
+        "warning": {
+          "type": "integer"
+        },
+        "compliance": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "passed ÷ (passed + failed), warnings aside"
+        },
+        "errors": {
+          "type": "integer",
+          "description": "inputs that could not be audited"
+        }
+      }
+    }
+  }
+}

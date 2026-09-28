@@ -58,6 +58,11 @@ Options
   -r, --recursive    scan folders recursively
       --no-open      don't open a browser window
   -h, --help         show this help
+
+Commands
+  vidscope audit [options] <file-or-url>...
+                     check files against streaming standards, without a browser
+                     (vidscope audit --help for the options)
 `;
 
 function parseArgs(argv) {
@@ -354,6 +359,13 @@ function humanBytes(n) {
 }
 
 async function main() {
+  // Subcommands run without the server: `vidscope audit` checks files and exits.
+  if (process.argv[2] === 'audit') {
+    const { main: audit } = await import('../scripts/audit.mjs');
+    // exitCode, not exit(): a report written to a pipe must drain before the process ends.
+    process.exitCode = await audit(process.argv.slice(3));
+    return;
+  }
   let opts;
   try {
     opts = parseArgs(process.argv.slice(2));
