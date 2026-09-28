@@ -60,8 +60,8 @@ export const REMEDIES = {
     fix: '-r <rate> on the output (or -fps_mode cfr) and -vsync/genpts on the input; measure the source with ffprobe -show_entries frame=pts_time first.',
   },
   'gop-fixed': {
-    cause: 'Scene-cut detection inserts extra key frames, or keyint_min is below keyint.',
-    fix: '-g N -keyint_min N -sc_threshold 0 (x264) with N = seconds × frame rate; for x265 add -x265-params scenecut=0.',
+    cause: 'Scene-cut detection inserts extra key frames, keyint_min is below keyint, or a chunked encode restarts the GOP at every chunk join.',
+    fix: '-g N -keyint_min N -sc_threshold 0 (x264) with N = seconds × frame rate; for x265 add -x265-params scenecut=0. In a chunked encode, start every chunk on a multiple of the GOP length so the grid carries on across the joins.',
   },
   'gop-length': {
     cause: 'The -g value does not match the intended segment length, or the frame rate used for the calculation was wrong.',
@@ -123,7 +123,10 @@ export const REMEDIES = {
     cause: 'Renditions encoded in separate runs with scene-cut on, or with different frame rates, so key frames fall on different frames.',
     fix: 'Encode every rendition from one decode with the same -g/-keyint_min/-sc_threshold 0 and the same -r; or use -force_key_frames expr:gte(t,n_forced*N).',
   },
-  'segment-lengths': { cause: 'The key-frame interval does not divide the intended segment length.', fix: 'Choose -g so that segment seconds × fps is a multiple of it (2 s GOP for 6 s segments; 5 s for 5/10 s segments).' },
+  'segment-lengths': {
+    cause: 'The key-frame interval does not divide the intended segment length, or a GOP cut short (a chunk join in a chunked encode, a forced key frame) moves the key frames after it off the grid.',
+    fix: 'Choose -g so that segment seconds × fps is a multiple of it (2 s GOP for 6 s segments; 5 s for 5/10 s segments), and cut chunks of a chunked encode on multiples of the GOP length (or force key frames on the whole file\'s grid with -force_key_frames and each chunk\'s start offset).',
+  },
   'frame-rates': { cause: 'Some renditions at half rate, others at full.', fix: 'Either keep one rate, or halve it only for the lowest renditions (-r 30 below 720p on 60 fps content).' },
   'same-audio': { cause: 'Different audio bit rates or channel counts per video rendition.', fix: 'One audio encode shared by every rendition (or a separate audio rendition group in the playlist).' },
   'bitrate-steps': { cause: 'CRF per rendition without a target, so bitrates land wherever the content takes them.', fix: 'Capped CRF with per-rendition -maxrate to shape the ladder into 1.5–2× steps.' },

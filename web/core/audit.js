@@ -37,7 +37,7 @@ export const SPECS = {
 /**
  * Expectations a service can set on its outputs. Everything is optional.
  *   gop: seconds between key frames (exact); gopMax: the longest allowed
- *   fpsMax, fpsMin: the frame-rate range; peakRatio: busiest second ÷ average, at most
+ *   fpsMax, fpsMin: the frame-rate range; peakRatio: busiest segment ÷ average, at most
  *   colour: { primaries, transfer, matrix } expected in the VUI (1/1/1 for BT.709)
  *   audio: { required, codec: 'AAC LC', sampleRate, channelsMax, minBitratePerChannel }
  *   loudness: { integrated (LUFS), tolerance (LU), truePeakMax (dBTP) }, for measured loudness
@@ -263,10 +263,17 @@ defineRule({
   applies: (c) => c.gop && c.gop.count >= 2,
   check: (c) => {
     const g = c.gop;
+    const sh = c.gopShape;
     // Key-frame positions come from the sample tables, whatever the payload budget.
-    return g.fixed
-      ? pass(`Key frame every ${fmtInt(g.avgFrames)} frames (${fmtNum(g.avgSeconds, 2)} s)`, 'Segments of equal length can be cut at every key frame.', { value: g.avgSeconds })
-      : warn(`Key-frame interval varies: ${fmtNum(g.minSeconds, 2)}–${fmtNum(g.maxSeconds, 2)} s`, 'Uneven intervals give uneven segments and break alignment across renditions.', { value: [g.minSeconds, g.maxSeconds], offset: c.gopOffset(g.maxSeconds) });
+    const every = `Key frame every ${fmtInt(sh.frames)} frames (${fmtNum(sh.seconds, 2)} s)`;
+    if (!sh.odd.length) return pass(every, 'Segments of equal length can be cut at every key frame.', { value: sh.seconds });
+    // A few GOPs cut short, each followed by the usual interval again, is what an encoder
+    // restart leaves (a join between the chunks of a chunked encode) or a forced key frame;
+    // many GOPs of other lengths is an interval that is not fixed at all.
+    const few = sh.odd.length <= Math.max(2, Math.ceil(0.05 * sh.count)) && sh.odd.every((o) => o.frames < sh.frames);
+    return few
+      ? info(`${every}, except ${plural(sh.odd.length, 'shorter GOP')} (${listAt(sh.odd)})`, 'A GOP cut short and then the usual interval again is what an encoder restart leaves, such as a join between the chunks of a chunked encode, or a forced key frame. Players do not mind, but the key frames after it are off the grid, so a segment there runs long (see the ladder\'s segment check).', { value: sh.odd.map((o) => round3(o.seconds)), offset: c.v.samples.offsets[sh.odd[0].start] })
+      : warn(`Key-frame interval varies: ${fmtNum(g.minSeconds, 2)}–${fmtNum(g.maxSeconds, 2)} s, ${sh.odd.length} of ${sh.count} GOPs differ from ${fmtNum(sh.seconds, 2)} s`, 'Uneven intervals give uneven segments and break alignment across renditions.', { value: [g.minSeconds, g.maxSeconds], offset: c.gopOffset(g.maxSeconds) });
   },
 });
 
@@ -275,13 +282,14 @@ defineRule({
   title: 'The key-frame interval the service intends',
   applies: (c) => c.gop && c.gop.count >= 2,
   check: (c) => {
-    const g = c.gop;
+    // The usual interval: a few short GOPs (chunk joins) would pull an average below it.
+    const sec = c.gopShape.seconds;
     if (c.ex.gop) {
-      const off = Math.abs(g.avgSeconds - c.ex.gop);
-      return (off <= 0.05 ? pass : fail)(`Key-frame interval ${fmtNum(g.avgSeconds, 3)} s, expected ${c.ex.gop} s`, off <= 0.05 ? 'As the service intends.' : 'The interval does not match the ladder contract.', { value: g.avgSeconds, expected: c.ex.gop });
+      const off = Math.abs(sec - c.ex.gop);
+      return (off <= 0.05 ? pass : fail)(`Key-frame interval ${fmtNum(sec, 3)} s, expected ${c.ex.gop} s`, off <= 0.05 ? 'As the service intends.' : 'The interval does not match the ladder contract.', { value: sec, expected: c.ex.gop });
     }
-    if (g.avgSeconds > 2.05) return info(`Key-frame interval ${fmtNum(g.avgSeconds, 2)} s`, 'Apple recommends a key frame every 2 s so that 6 s segments can be cut and switching stays quick; longer intervals mean longer segments and slower start-up.', { value: g.avgSeconds });
-    return pass(`Key-frame interval ${fmtNum(g.avgSeconds, 2)} s`, 'Within Apple\'s recommendation.', { value: g.avgSeconds });
+    if (sec > 2.05) return info(`Key-frame interval ${fmtNum(sec, 2)} s`, 'Apple recommends a key frame every 2 s so that 6 s segments can be cut and switching stays quick; longer intervals mean longer segments and slower start-up.', { value: sec });
+    return pass(`Key-frame interval ${fmtNum(sec, 2)} s`, 'Within Apple\'s recommendation.', { value: sec });
   },
 });
 
@@ -323,11 +331,24 @@ defineRule({
   title: 'Peaks stay near the average',
   applies: (c) => c.it.rate?.avg > 0 && c.it.duration >= 3,
   check: (c) => {
+    // HLS measures the peak over whole segments (BANDWIDTH is the busiest segment's rate), and
+    // a segment starts at a key frame, so a key frame much larger than the frames after it
+    // makes its own second look busy without making any segment busy.
     const r = c.it.rate;
-    const title = `Busiest second ${fmtBitrate(r.peak)}, ${fmtNum(r.ratio, 2)}× the average of ${fmtBitrate(r.avg)}`;
-    return r.ratio <= c.ex.peakRatio
-      ? pass(title, 'Peaks stay within the allowed ratio, so the advertised bandwidth is honest.', { value: r.ratio, expected: `≤ ${c.ex.peakRatio}` })
-      : warn(title, 'HLS advertises the peak (BANDWIDTH); a rendition whose peaks run far above its average stalls on links sized for its average.', { value: r.ratio, expected: `≤ ${c.ex.peakRatio}`, offset: c.v.samples.offsets[c.peakSample] });
+    const len = segmentLength(c);
+    const seg = len ? segmentPeak(c.v, len) : null;
+    const second = `The busiest single second is ${fmtBitrate(r.peak)} (${fmtNum(r.ratio, 2)}×).`;
+    if (!seg) {
+      const title = `Busiest second ${fmtBitrate(r.peak)}, ${fmtNum(r.ratio, 2)}× the average of ${fmtBitrate(r.avg)}`;
+      return r.ratio <= c.ex.peakRatio
+        ? pass(title, 'Peaks stay within the allowed ratio, so the advertised bandwidth is honest.', { value: r.ratio, expected: `≤ ${c.ex.peakRatio}` })
+        : warn(title, 'HLS advertises the peak (BANDWIDTH); a rendition whose peaks run far above its average stalls on links sized for its average.', { value: r.ratio, expected: `≤ ${c.ex.peakRatio}`, offset: c.v.samples.offsets[c.peakSample] });
+    }
+    const ratio = seg.rate / r.avg;
+    const title = `Busiest ${fmtNum(len, 1)} s segment ${fmtBitrate(seg.rate)} (at ${fmtDuration(seg.at, false)}), ${fmtNum(ratio, 2)}× the average of ${fmtBitrate(r.avg)}`;
+    return ratio <= c.ex.peakRatio
+      ? pass(title, `Segment peaks stay within the allowed ratio, so the advertised bandwidth is honest. ${second}`, { value: round3(ratio), expected: `≤ ${c.ex.peakRatio}` })
+      : warn(title, `HLS advertises the busiest segment (BANDWIDTH); a rendition whose segments run far above its average stalls on links sized for its average. ${second}`, { value: round3(ratio), expected: `≤ ${c.ex.peakRatio}`, offset: c.v.samples.offsets[seg.start] });
   },
 });
 
@@ -357,7 +378,17 @@ defineRule({
   applies: (c) => c.it.bpp > 0,
   check: (c) => {
     const low = c.vi.family === 'hevc' ? 0.02 : 0.03;
-    return c.it.bpp < low ? warn(`${fmtNum(c.it.bpp, 3)} bits per pixel`, 'Very few bits per pixel: expect visible blocking on motion.', { value: c.it.bpp }) : info(`${fmtNum(c.it.bpp, 3)} bits per pixel`, '0.05–0.15 is usual for H.264 at this kind of resolution.', { value: c.it.bpp });
+    const bpp = fmtNum(c.it.bpp, 3);
+    if (c.it.bpp >= low) return info(`${bpp} bits per pixel`, '0.05–0.15 is usual for H.264 at this kind of resolution.', { value: c.it.bpp });
+    // Constant quality spends what the picture needs: a simple picture (a talking head, a
+    // still) gets few bits at the same quality. Only a bitrate target, or a cap the encoder
+    // ran into, can starve it.
+    const rc = c.rc;
+    const capped = rc?.mode === 'capped-crf' && rc.maxrate > 0 && c.it.rate?.avg >= 0.8 * rc.maxrate * 1000;
+    if (rc && (rc.mode === 'crf' || (rc.mode === 'capped-crf' && !capped))) {
+      return info(`${bpp} bits per pixel at CRF ${rc.crf}`, 'Few bits per pixel, but the encoder aimed at a constant quality (CRF) and was not held back by a cap, so this says the picture is simple (little motion or detail), not that it was starved. Judge the quality by eye or against the source (PSNR, VMAF).', { value: c.it.bpp });
+    }
+    return warn(`${bpp} bits per pixel`, `Very few bits per pixel${capped ? ', with the encoder at its bitrate cap' : ''}: expect visible blocking on motion.`, { value: c.it.bpp });
   },
 });
 
@@ -586,9 +617,9 @@ defineRule({
     const elst = c.a.node.find('elst');
     const media = elst?.data?.table?.count ? firstMediaTime(elst.data.table) : 0;
     const ms = (media / (c.a.timescale || 1)) * 1000;
-    return media > 0
-      ? pass(`Edit list skips the first ${fmtNum(ms, 1)} ms (encoder priming)`, 'The encoder delay is removed, so audio and video start together.', { value: ms, offset: elst.offset })
-      : warn('No edit list for the encoder priming', 'AAC encoders add 1024–2112 samples of delay; without an edit list audio plays 20–50 ms late against the video. Files remuxed from MPEG-TS lose this information.', { value: 0, offset: elst?.offset ?? c.a.node.offset });
+    if (media > 0) return pass(`Edit list skips the first ${fmtNum(ms, 1)} ms (encoder priming)`, 'The encoder delay is removed, so audio and video start together.', { value: ms, offset: elst.offset });
+    if (!elst) return warn('No edit list for the encoder priming', 'AAC encoders put 1024–2112 samples of priming before the sound; without an edit list to skip them, audio plays 20–50 ms late against the video. Files remuxed from MPEG-TS lose this information.', { value: 0, offset: c.a.node.offset });
+    return warn('The audio edit list starts at 0, so the encoder priming is played', 'AAC encoders put 1024–2112 samples of priming before the sound. This edit list does not skip them, so audio plays about 20–50 ms late against the video unless the timestamps were shifted to make up for it; a sync measurement (a flash and a beep) settles it. Files remuxed from MPEG-TS lose the priming information.', { value: 0, offset: elst.offset });
   },
 });
 
@@ -656,6 +687,25 @@ function keyTolerance(items) {
   return (Number.isFinite(fps) ? 0.5 / fps : 0.02) + 0.001;
 }
 
+/**
+ * Where a packager cuts segments of `len` seconds: at the first key frame at or after each
+ * multiple of the length, counted in segments (ffmpeg's HLS muxer keeps such a running grid), so
+ * a segment that ran long does not shift the ones after it unless the key frames moved.
+ */
+function packagerCuts(keys, len, tol) {
+  const cuts = [keys[0]];
+  for (let k = 1; k < keys.length; k++) if (keys[k] - keys[0] >= cuts.length * len - tol) cuts.push(keys[k]);
+  return cuts;
+}
+
+/** "7.4 s at 9:57, 2 s at 4:55, and 3 more": the first few of a list of { at, seconds }. */
+function listAt(items, n = 3) {
+  const head = items.slice(0, n).map((o) => `${fmtNum(o.seconds, 1)} s at ${fmtDuration(o.at, false)}`).join(', ');
+  return items.length > n ? `${head}, and ${items.length - n} more` : head;
+}
+
+const round3 = (x) => Math.round(x * 1000) / 1000;
+
 function hasKeyNear(keys, t, tol) {
   let lo = 0;
   let hi = keys.length - 1;
@@ -698,18 +748,34 @@ defineRule({
 defineRule({
   id: 'segment-lengths', scope: 'ladder', category: 'Ladder', severity: 'critical', spec: 'rfc8216', clause: '§4.3.3.1 target duration',
   title: 'A segment length fits every rendition',
-  applies: (l) => l.items.length >= 2 && l.results.every((r) => r.facts.video?.gop > 0),
+  applies: (l) => l.items.length >= 2 && l.items.every((it) => it.keyTimes?.length && it.times?.length),
   check: (l) => {
-    // A segment length works when it is a whole number of GOPs in every rendition; a GOP of
-    // 120 frames at 23.976 fps is 5.005 s and still cuts 5 s segments (the playlist says 5.005).
-    const good = l.ex.segments.filter((len) => l.results.every((r) => {
-      const gop = r.facts.video.gop;
-      const n = Math.round(len / gop);
-      return n >= 1 && Math.abs(n * gop - len) <= Math.max(0.5 / (r.facts.video.fps || 25), 0.01 * len);
-    }));
-    return good.length
-      ? pass(`Segments of ${good.map((s) => `${s} s`).join(', ')} fit the key frames`, 'Any of these target durations can be packaged without splitting a GOP.', { value: good })
-      : fail(`No segment length of ${l.ex.segments.join('/')} s fits the key frames`, 'The packager will have to use uneven or long segments.', { expected: l.ex.segments, value: l.results.map((r) => Math.round(r.facts.video.gop * 1000) / 1000) });
+    // Cut every rendition the way a packager would for each segment length, and look at what
+    // comes out: the same cut times in every rendition (or switching glitches), and no segment
+    // longer than asked (a GOP of 120 frames at 23.976 fps is 5.005 s and still cuts 5 s
+    // segments). Every key frame counts, so a short GOP anywhere in the file is seen.
+    const tol = keyTolerance(l.items);
+    const end = Math.max(...l.items.map((it) => it.times[it.times.length - 1] + (it.fps ? 1 / it.fps : 0)));
+    const plans = l.ex.segments.map((len) => {
+      const cuts = l.items.map((it) => packagerCuts(it.keyTimes, len, tol));
+      const aligned = cuts.every((cs) => cs.length === cuts[0].length && cs.every((t, k) => Math.abs(t - cuts[0][k]) <= tol));
+      const long = [];
+      let longest = 0;
+      cuts[0].forEach((t, k) => {
+        const seconds = (k + 1 < cuts[0].length ? cuts[0][k + 1] : end) - t;
+        longest = Math.max(longest, seconds);
+        if (seconds > len + Math.max(tol, 0.01 * len)) long.push({ at: t, seconds });
+      });
+      return { len, aligned, long, longest, count: cuts[0].length };
+    });
+    const fit = plans.filter((p) => p.aligned && !p.long.length);
+    if (fit.length) return pass(`Segments of ${fit.map((p) => `${p.len} s`).join(', ')} fit the key frames`, 'A packager cuts every segment of these lengths on time, at the same moment in every rendition.', { value: fit.map((p) => p.len) });
+    const best = plans.filter((p) => p.aligned).sort((p, q) => p.long.length / p.count - q.long.length / q.count || p.longest / p.len - q.longest / q.len)[0];
+    if (best) {
+      const few = best.long.length <= best.count / 4;
+      return warn(`${best.len} s segments: ${best.long.length} of ${best.count} run long (${listAt(best.long)})`, `Key frames line up across the renditions, so switching works; but ${few ? `after a shorter GOP the key frames are off the ${best.len} s grid` : `they do not fall every ${best.len} s`}, so the packager waits for the next one and those segments run long. The longest is ${fmtNum(best.longest, 1)} s, so the playlist's target duration has to grow from ${best.len} s to cover it.`, { value: round3(best.longest), expected: `≤ ${best.len} s` });
+    }
+    return fail(`No segment length of ${l.ex.segments.join('/')} s cuts every rendition at the same moments`, 'The key frames of the renditions do not line up, so a packager cuts their segments at different times and a player cannot switch cleanly between them.', { expected: l.ex.segments });
   },
 });
 
@@ -900,6 +966,7 @@ export async function auditFile(doc, expect = {}, { onProgress, measured = {}, p
     doc, it, ex, measured, insights, videos, audios, v, a, vi, an,
     sampled: scan.sampled,
     gop: an?.gop && an.gop.count >= 1 ? an.gop : null,
+    gopShape: an?.gops?.length && v ? gopShape(an, v) : null,
     mp4: null, lvl: null, sei: null, parsed: null, rc: null, colour: null, audio: null,
     entryOffset: v?.entryNode?.offset ?? v?.node?.offset,
     seiOffset: undefined,
@@ -954,7 +1021,7 @@ export async function auditFile(doc, expect = {}, { onProgress, measured = {}, p
     bytesRead: doc.source?.stats?.bytes ?? null,
     payload: scan.gops != null ? { gopsRead: scan.gops, gopsFull: scan.full, gops: scan.of, ranges: scan.ranges } : null,
     index: c.mp4?.moov ? { offset: c.mp4.moov.offset, size: c.mp4.moov.size } : null,
-    video: v ? { codec: videoCodecName(it), width: vi.width, height: vi.height, fps: it.fps, profile: vi.profileName ?? null, level: vi.level ?? null, levelName: c.lvl?.signalled?.name ?? null, depth: vi.depth ?? null, bitrate: it.rate?.avg ?? null, peak: it.rate?.peak ?? null, gop: c.gop?.avgSeconds ?? null, bpp: it.bpp ?? null, colour: c.colour?.text ?? null, timescale: v.timescale ?? null } : null,
+    video: v ? { codec: videoCodecName(it), width: vi.width, height: vi.height, fps: it.fps, profile: vi.profileName ?? null, level: vi.level ?? null, levelName: c.lvl?.signalled?.name ?? null, depth: vi.depth ?? null, bitrate: it.rate?.avg ?? null, peak: it.rate?.peak ?? null, gop: c.gopShape?.seconds ?? c.gop?.avgSeconds ?? null, bpp: it.bpp ?? null, colour: c.colour?.text ?? null, timescale: v.timescale ?? null } : null,
     audio: c.audio,
     encoder: c.parsed ? { label: c.parsed.label, version: c.parsed.version, crf: c.rc?.crf ?? null, maxrate: c.rc?.maxrate ?? null, bufsize: c.rc?.bufsize ?? null, keyint: c.parsed.get('keyint') ?? null } : null,
   };
@@ -979,6 +1046,81 @@ function finish(rule, res, overlay = null) {
     if (rem) out.remedy = rem;
   }
   return out;
+}
+
+/**
+ * The usual GOP (the most common length in frames, the last GOP left out as a file usually ends
+ * inside one) and the GOPs of other lengths, with where they start (seconds from the first frame).
+ */
+function gopShape(an, v) {
+  const full = an.gops.filter((g) => !g.partial);
+  const counted = full.length > 1 ? full.slice(0, -1) : full;
+  if (!counted.length) return null;
+  const tally = new Map();
+  for (const g of counted) tally.set(g.frames, (tally.get(g.frames) ?? 0) + 1);
+  let frames = 0;
+  let most = 0;
+  for (const [f, k] of tally) {
+    if (k > most || (k === most && f > frames)) {
+      frames = f;
+      most = k;
+    }
+  }
+  const usual = counted.filter((g) => g.frames === frames);
+  const s = v.samples;
+  const ts = v.timescale || s.timescale || 1;
+  const at = (g) => (s.dts ? (s.dts[g.start] - s.dts[0]) / ts : 0);
+  return {
+    frames,
+    seconds: usual.reduce((sum, g) => sum + g.seconds, 0) / usual.length,
+    count: counted.length,
+    odd: counted.filter((g) => g.frames !== frames).map((g) => ({ start: g.start, frames: g.frames, seconds: g.seconds, at: at(g) })),
+  };
+}
+
+/**
+ * The segment length a packager would use for this file: the shortest expected length that is
+ * not shorter than the usual GOP, else the GOP itself.
+ */
+function segmentLength(c) {
+  const gop = c.gopShape?.seconds;
+  if (!gop) return c.ex.segments?.length ? Math.max(...c.ex.segments) : 6;
+  const fits = (c.ex.segments ?? []).filter((len) => len >= gop - 0.05).sort((p, q) => p - q);
+  return fits[0] ?? gop;
+}
+
+/**
+ * The busiest segment when the video track is cut into segments of `len` seconds at key frames
+ * (see packagerCuts), in bits per second, with where it starts. Segments shorter than half the
+ * length are left out (RFC 8216 measures the peak over segments of 0.5–1.5 target durations).
+ */
+function segmentPeak(v, len) {
+  const s = v.samples;
+  if (!s?.dts || !s.sizes || s.count < 2) return null;
+  const ts = v.timescale || s.timescale || 1;
+  const time = (i) => (s.dts[i] - s.dts[0]) / ts;
+  const last = s.count - 1;
+  const end = time(last) + (s.durations?.[last] ?? 0) / ts;
+  const tol = end / s.count / 2 + 0.001;
+  let best = null;
+  let from = 0;
+  let bits = 0;
+  let cuts = 1;
+  const close = (to) => {
+    const seconds = to - time(from);
+    if (seconds >= len / 2 && (!best || bits / seconds > best.rate)) best = { rate: bits / seconds, at: time(from), start: from, seconds };
+  };
+  for (let i = 0; i < s.count; i++) {
+    if (i > from && (!s.key || s.key[i]) && time(i) >= cuts * len - tol) {
+      close(time(i));
+      from = i;
+      bits = 0;
+      cuts++;
+    }
+    bits += s.sizes[i] * 8;
+  }
+  close(end);
+  return best;
 }
 
 /** The first sample of the busiest second (rateStats counts seconds from the first decode time). */

@@ -57,7 +57,7 @@
         },
         "peakRatio": {
           "type": "number",
-          "description": "busiest second ÷ average, at most"
+          "description": "busiest segment ÷ average, at most"
         },
         "colour": {
           "type": "object",
