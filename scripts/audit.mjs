@@ -560,7 +560,7 @@ export async function auditInputs(o, log = () => {}) {
 
 // A name is a rendition of some content when it carries a size, quality or version token;
 // "movie-1.mp4" and "movie-2.mp4" are two movies, not two renditions.
-const RENDITION = /(\d{3,4}p(?![a-z])|\d{3,4}x\d{3,4}|\d+(?:\.\d+)?\s*[mk]b(?:ps|\/s)?|\b(?:low|med|medium|high|hq|lq|mq|sd|hd|fhd|uhd|4k|source|orig|original|remux|copy|akuma)\b)/i;
+const RENDITION = /(\d{3,4}p(?![a-z])|\d{3,4}x\d{3,4}|\d+(?:\.\d+)?\s*[mk]b(?:ps|\/s)?|\b(?:low|med|medium|high|hq|lq|mq|sd|hd|fhd|uhd|4k|source|orig|original|remux|copy)\b)/i;
 
 /** The ladder an input belongs to: its folder and content name, or null when it is not a rendition. */
 export function ladderKey(input) {

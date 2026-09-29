@@ -50,7 +50,7 @@ test('the peak segment bit rate is the busiest run of 0.5 to 1.5 target duration
 });
 
 test('signed URLs lose their query in anything written down', () => {
-  assert.equal(redact('https://node.example/a/chunk.m3u8?wmsAuthSign=SECRET'), 'https://node.example/a/chunk.m3u8?…');
+  assert.equal(redact('https://node.example/a/chunk.m3u8?sig=SECRET'), 'https://node.example/a/chunk.m3u8?…');
 });
 
 // ------------------------------------------------------------------ a presentation over HTTP
