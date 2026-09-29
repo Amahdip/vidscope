@@ -1,4 +1,4 @@
-// CONVERSION CHECK: a video id, a rendition URL or a flv_name, looked up and audited by the
+// CONVERSION CHECK: a video id, a rendition URL or a stored file name, looked up and audited by the
 // audit server next to the viewer (api/audit/check), shown as one report: the verdict, the
 // conformance matrix, the ladder checks and each rendition's findings. Every rendition opens in
 // the viewer through the server's byte proxy, alone or all of them side by side.
@@ -97,7 +97,7 @@ export class ReportView {
     const title = v.id ? `Video ${v.id}${v.title ? ` · ${v.title}` : ''}` : d.label;
     const meta = [
       v.uid ? ['uid', v.uid] : null,
-      v.flv ? ['flv_name', v.flv] : null,
+      v.file ? ['file', v.file] : null,
       v.uploadDate ? ['uploaded', v.uploadDate] : null,
       v.duration ? ['duration', fmtDuration(v.duration)] : null,
       ['renditions', `${fmtInt(d.renditions.length)}${d.missing?.length ? ` (${d.missing.join(', ')} not found)` : ''}`],
