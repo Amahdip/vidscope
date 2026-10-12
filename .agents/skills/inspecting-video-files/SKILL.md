@@ -30,9 +30,26 @@ node bin/vidscope.js clip.mp4 other.mkv --no-open
 
 Links keep state: `?file=2#0x28` opens the second file at byte 0x28; `?compare=1,2,3` opens
 the Compare view with the first file as the reference. Useful tabs: Bytes (hex coloured by
-structure), Frames (types and GOPs), Bitrate (per second, VBV check) and Audit in the centre;
-Structure, Tracks and Glossary on the left; Inspector, File insights (encoder settings, rate
-control, levels) and Commands (ffprobe and ffmpeg filled in for the file) on the right.
+structure), Frames (types, GOPs, synchronized audio lane, and anomaly markers), Bitrate (per second,
+VBV check) and Audit in the centre; Structure, Tracks and Glossary on the left; Inspector, File
+insights (encoder settings, rate control, levels) and Commands (ffprobe and ffmpeg filled in for the
+file) on the right.
+
+### Unified Investigation Timeline
+In the **Frames** tab, Vidscope synchronizes video frames (I/P/B bars), GOP bands, and an audio packet
+lane on a single interactive timeline. The anomaly lane highlights defects:
+- 🔴 Critical: non-monotonic DTS, keyframe/RAP mismatches, A/V desync >50 ms, or audit failures.
+- 🟡 Warning: presentation timestamp gaps >2.5 frame durations, minor timing drift, audit warnings.
+- 🔵 Info: container warnings mapped to frame offsets.
+Clicking any badge or pressing `N` (next anomaly) / `P` (previous anomaly) pans the timeline and
+instantly selects the exact byte offset in the inspector and hex view.
+
+### Transcoding QA in Compare View
+In the **Compare** view, conversions are evaluated with semantic QA verdicts:
+- **Clean remux**: Bit-for-bit stream copy without metadata or sync loss.
+- **Clean transcode**: Re-encoded cleanly with preserved sync, tracks, color, and GOP structure.
+- **Regression detected**: Critical defects such as A/V sync drift (>50 ms), stripped color tags, or dropped tracks.
+- **Actionable FFmpeg remedies**: Copyable commands to resolve each defect in conversion pipelines.
 Guided mode adds plain-language notes; Expert mode shows values and offsets only.
 
 ## Checking against FFmpeg

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { open, sample, haveSample, haveFfprobe } from './helpers.mjs';
-import { frameTypes, analyzeFrames, displayOrder, frameInsights } from '../web/core/frames.js';
+import { frameTypes, analyzeFrames, displayOrder, frameInsights, timelineAnomalies } from '../web/core/frames.js';
 import { FT, FF, classifyFrame, frameContext, typeLetter } from '../web/codecs/frametype.js';
 
 const LETTER = { [FT.I]: 'I', [FT.P]: 'P', [FT.B]: 'B', [FT.S]: 'S' };
@@ -217,3 +217,83 @@ test('classifier asks for more bytes when a header is cut off', () => {
   const out = {};
   assert.equal(classifyFrame(ctx, u8, 0, u8.length, 300, out), -1);
 });
+
+test('timelineAnomalies: extracts timing, keyframe, sync and audit anomalies with exact byte offsets', async () => {
+  // Test on synthetic doc with anomalies
+  const s = {
+    count: 5,
+    timescale: 1000,
+    offsets: new Float64Array([100, 200, 300, 400, 500]),
+    sizes: new Uint32Array([100, 50, 50, 50, 50]),
+    dts: new Float64Array([0, 40, 80, 70, 160]), // notice dts[3]=70 < dts[2]=80 (non-monotonic) and gap to 160
+    cto: new Int32Array([0, 0, 0, 0, 0]),
+    durations: new Float64Array([40, 40, 40, 40, 40]),
+    key: new Uint8Array([1, 1, 0, 0, 0]), // frame 1 is marked as key
+  };
+  const videoTrack = {
+    kind: 'video',
+    label: 'Video (H.264)',
+    timescale: 1000,
+    samples: s,
+    node: { offset: 50 },
+  };
+  const audioTrack = {
+    kind: 'audio',
+    label: 'Audio (AAC)',
+    timescale: 1000,
+    samples: {
+      count: 4,
+      timescale: 1000,
+      offsets: new Float64Array([1000, 1100, 1200, 1300]),
+      sizes: new Uint32Array([100, 100, 100, 100]),
+      dts: new Float64Array([120, 140, 160, 260]), // audio starts at 120ms (drift vs video 0ms) and has gap at 260ms
+      durations: new Float64Array([20, 20, 20, 20]),
+    },
+    node: { offset: 900 },
+  };
+  const doc = {
+    name: 'test.mp4',
+    tracks: [videoTrack, audioTrack],
+    warnings: [{ offset: 250, msg: 'Box header truncated' }],
+    frameCodec: () => null,
+  };
+
+  const auditChecks = [
+    { id: 'custom-check', level: 'fail', severity: 'CRITICAL', title: 'Corrupted NAL unit', text: 'NAL forbidden bit set', offset: 305 },
+  ];
+
+  const anomalies = await timelineAnomalies(doc, videoTrack, { auditChecks });
+  assert.ok(Array.isArray(anomalies), 'returns array of anomalies');
+  assert.ok(anomalies.length >= 3, `found anomalies (count: ${anomalies.length})`);
+
+  // Verify non-monotonic DTS was caught
+  const dtsError = anomalies.find((a) => a.id.includes('dts-non-monotonic'));
+  assert.ok(dtsError, 'detected non-monotonic DTS');
+  assert.equal(dtsError.level, 'bad');
+  assert.equal(dtsError.offset, 400);
+
+  // Verify A/V sync drift was caught
+  const avSync = anomalies.find((a) => a.id.includes('av-sync'));
+  assert.ok(avSync, 'detected A/V sync drift');
+  assert.equal(avSync.level, 'warn');
+
+  // Verify container warning was included
+  const warn = anomalies.find((a) => a.id.includes('container-warning'));
+  assert.ok(warn, 'detected container warning');
+  assert.equal(warn.offset, 250);
+
+  // Verify audit check was mapped
+  const audit = anomalies.find((a) => a.id === 'audit-custom-check');
+  assert.ok(audit, 'mapped audit finding');
+  assert.equal(audit.level, 'bad');
+  assert.equal(audit.offset, 305);
+});
+
+test('timelineAnomalies: clean sample produces clean timeline', { skip: !haveSample('h264-aac.mp4') }, async () => {
+  const { doc, tracks } = await classified('h264-aac.mp4');
+  const anomalies = await timelineAnomalies(doc, tracks[0]);
+  assert.ok(Array.isArray(anomalies));
+  assert.equal(anomalies.filter((a) => a.level === 'bad').length, 0, 'no critical anomalies in clean sample');
+  doc._close();
+});
+

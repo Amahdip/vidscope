@@ -86,15 +86,18 @@ FFmpeg, and `npm start` opens them.
   settings, metadata, chapters and integrity problems, each with the FFmpeg command that fixes
   it. Per format: Matroska Cues, SeekHead and CRC-32s; TS timing (PCR, PAT/PMT repetition,
   continuity counters); AVI indexes; FLV metadata against the tags.
-- **Frames view**: every frame as an I-, P- or B-frame, read from its own slice or frame header
+- **Frames view & Investigation Timeline**: every frame as an I-, P- or B-frame, read from its own slice or frame header
   (H.264, HEVC, AV1, VP9, VP8, MPEG-2, MPEG-4 Part 2, Sorenson, VP6), grouped into GOPs, in
-  decoding order next to display order.
+  decoding order next to display order. An interactive multi-lane timeline correlates video frames,
+  synchronized audio packet alignment and gaps, decode order glitches, and audit findings, with
+  one-click anomaly jumps (`N` / `P` shortcuts) straight to the offending bytes in the inspector and hex view.
 - **Bitrate view**: bits per second of every track over time, average and peaks, bits per
   pixel, a guess at the rate control, and a decoder buffer (VBV) check for a given `-maxrate`
   and `-bufsize`.
-- **Compare versions**: a source next to the versions converted from it. What each conversion
-  changed or lost, whether the video was copied or re-encoded, the ladder's bitrates, whether
-  key frames line up and which segment lengths work, and a **pixel microscope** that decodes the
+- **Transcoding QA & Compare versions**: a source next to the versions converted from it. Evaluates
+  stream modes (bit-for-bit remux vs transcode), Audio/Video sync drift in milliseconds (audio priming loss,
+  stripped edit lists), dropped subtitle or audio tracks, stripped color and HDR tags, and GOP alignment
+  for HLS/DASH chunking, each with the FFmpeg command that fixes it. A **pixel microscope** decodes the
   pictures in the browser (WebCodecs) side by side, with a difference view and PSNR and SSIM
   computed as FFmpeg's filters do.
 - **Encoding explained**: the x264/x265 settings stored in the stream, each one explained; the
@@ -195,9 +198,11 @@ follows (`--budget <MB>`, 32 by default), so a long file costs a few megabytes, 
 `--expect` states what the service intends (GOP length, frame-rate range, colour description,
 audio codec and sample rate, loudness target); without it the rules check only what the
 standards say. `--json` writes a report ([docs/audit-report.schema.json](docs/audit-report.schema.json)),
-`--sarif` a SARIF log, `--measure` adds FFmpeg loudness and, with `--source`, PSNR/SSIM against
-the original. The exit code is 2 on a critical finding, 1 on a warning, 3 when an input could not
-be audited.
+`--sarif` a SARIF log. Given `--source <original>`, Vidscope performs automated Transcoding QA
+comparing the converted inputs against the source: measuring A/V sync drift to the millisecond,
+verifying subtitle and audio track preservation, checking color and HDR tags, and validating GOP
+cadence. `--measure` adds FFmpeg loudness and PSNR/SSIM against the original. The exit code is 2 on a
+critical finding, 1 on a warning, 3 when an input could not be audited.
 
 Loudness (EBU R 128 integrated loudness and true peak) is measured from the audio samples alone:
 Vidscope reads them by byte range and hands them to FFmpeg, so a file on a server costs its audio

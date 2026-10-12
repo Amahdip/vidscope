@@ -3,6 +3,19 @@
 Notable changes to Vidscope. There are no tagged releases yet; `main` is the current version.
 Each entry links to the pull request with the details.
 
+## 2026-10-12
+
+### Added
+- Unified Investigation Timeline in Frames view: multi-lane canvas integrating video frame sizes (I/P/B),
+  GOP bands, synchronized audio packet alignment, and color-coded anomaly markers (decode order glitches,
+  timestamp gaps, keyframe/RAP mismatches, and audit findings). Toolbar navigation and keyboard shortcuts
+  (`N` for next, `P` for previous anomaly) jump directly to the offending byte in the inspector and hex view.
+- Semantic Transcoding QA & Conversion Analysis: Compare view and `vidscope audit --source <original>`
+  evaluate converted renditions against the source. Measures Audio/Video sync drift down to the millisecond
+  (detecting unhandled audio priming and stripped edit lists), checks track preservation (subtitles, audio
+  languages), validates color and HDR metadata integrity, and verifies GOP cadence for adaptive streaming,
+  with copyable FFmpeg remedy commands.
+
 ## 2026-09-28
 
 ### Added

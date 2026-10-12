@@ -5,9 +5,9 @@
 import { h, clear } from './dom.js';
 import { showTip, hideTip } from './tooltip.js';
 import { loadPref, savePref } from './store.js';
-import { fmtInt, fmtNum, fmtDuration, humanBytes, humanSize, plural } from '../core/util.js';
+import { fmtInt, fmtNum, fmtDuration, humanBytes, humanSize, plural, hex } from '../core/util.js';
 import { FT, FF, typeLetter, frameLabel, explainFrame, codecTypeName } from '../codecs/frametype.js';
-import { frameTypes, analyzeFrames, displayOrder, gopLetters, frameRate, ptsOf, AUTO_SCAN_BYTES } from '../core/frames.js';
+import { frameTypes, analyzeFrames, displayOrder, gopLetters, frameRate, ptsOf, timelineAnomalies, AUTO_SCAN_BYTES } from '../core/frames.js';
 
 const MAIN_H = 200;
 const OVER_H = 34;
@@ -59,6 +59,10 @@ export class FramesView {
     this.t = null;
     this.ft = null;
     this.an = null;
+    this.anomalies = [];
+    this.anomalyIndex = -1;
+    this.anomSeq = 0;
+    this.anomEl = null;
     this.order = loadPref('frameOrder', 'display');
     this.v0 = 0;
     this.v1 = 0;
@@ -70,7 +74,7 @@ export class FramesView {
     this.el.classList.add('frames');
     app.store.subscribe((s, ch) => {
       if (ch.has('doc')) this.setDoc(s.doc);
-      else if (ch.has('samplesReady')) this.setDoc(s.doc, true);
+      else if (ch.has('samplesReady')) { this.setDoc(s.doc, true); this.loadAnomalies(); }
       else if (ch.has('mode')) this.render();
       if (ch.has('theme')) this.draw();
       if (ch.has('sel')) this.onSel(s.sel);
@@ -81,6 +85,109 @@ export class FramesView {
 
   get shown() {
     return this.app.store.get().centerTab === 'frames';
+  }
+
+  audioTrack() {
+    return this.doc?.tracks.find((t) => t.kind === 'audio' && t.samples?.count) ?? null;
+  }
+
+  mainHeight() {
+    return this.audioTrack() ? 236 : 200;
+  }
+
+  audioLaneRect() {
+    const a = this.audioTrack();
+    if (!a) return null;
+    const top = this.mainHeight() - 34;
+    const bottom = this.mainHeight() - 6;
+    return { top, bottom, height: bottom - top };
+  }
+
+  async loadAnomalies() {
+    if (!this.doc || !this.t) {
+      this.anomalies = [];
+      this.renderAnomalyNav();
+      return;
+    }
+    const my = ++this.anomSeq;
+    try {
+      const list = await timelineAnomalies(this.doc, this.t, {
+        auditChecks: this.app.store.get().auditResult?.checks ?? null,
+      });
+      if (my !== this.anomSeq) return;
+      this.anomalies = list;
+      this.renderAnomalyNav();
+      this.draw();
+    } catch (e) {
+      console.error('Failed to load timeline anomalies', e);
+    }
+  }
+
+  renderAnomalyNav() {
+    if (!this.anomEl) return;
+    clear(this.anomEl);
+    if (!this.anomalies || !this.anomalies.length) {
+      this.anomEl.append(h('span', { class: 'fanom-pill good', 'data-tip': 'No timing, key frame or stream anomalies detected on this track' }, '✓ 0 anomalies'));
+      return;
+    }
+    const bad = this.anomalies.filter((a) => a.level === 'bad').length;
+    const warn = this.anomalies.filter((a) => a.level === 'warn').length;
+    const cls = bad ? 'bad' : warn ? 'warn' : 'good';
+    const label = [
+      bad ? `${bad} critical` : null,
+      warn ? `${warn} warning${warn > 1 ? 's' : ''}` : null,
+      !bad && !warn ? `${this.anomalies.length} note${this.anomalies.length > 1 ? 's' : ''}` : null,
+    ].filter(Boolean).join(' · ');
+
+    const pill = h('button', {
+      class: `fanom-pill ${cls}`,
+      onclick: () => this.nextAnomaly(),
+      'data-tip': `${this.anomalies.length} timeline anomalies found:\nClick to step through them (or press N / P)`,
+    }, bad ? '✕ ' : warn ? '! ' : '● ', label);
+
+    const prevBtn = h('button', {
+      class: 'btn',
+      onclick: () => this.prevAnomaly(),
+      'data-tip': 'Previous anomaly (P)',
+    }, '←');
+
+    const nextBtn = h('button', {
+      class: 'btn',
+      onclick: () => this.nextAnomaly(),
+      'data-tip': 'Next anomaly (N)',
+    }, '→');
+
+    const nav = h('span', { class: 'fanom-nav' }, prevBtn, nextBtn);
+    this.anomEl.append(pill, nav);
+  }
+
+  jumpToAnomaly(idx) {
+    if (!this.anomalies.length) return;
+    idx = Math.max(0, Math.min(this.anomalies.length - 1, idx));
+    const an = this.anomalies[idx];
+    if (!an) return;
+    this.anomalyIndex = idx;
+    if (an.sampleIndex >= 0) {
+      this.selI = an.sampleIndex;
+      const k = this.posOf(an.sampleIndex);
+      const span = this.v1 - this.v0;
+      this.setView(k - span / 2, span);
+    }
+    if (an.offset != null) {
+      this.app.selectByte(an.offset, { from: 'timeline' });
+    }
+    this.renderAnomalyNav();
+    this.draw();
+  }
+
+  nextAnomaly() {
+    if (!this.anomalies.length) return;
+    this.jumpToAnomaly((this.anomalyIndex + 1) % this.anomalies.length);
+  }
+
+  prevAnomaly() {
+    if (!this.anomalies.length) return;
+    this.jumpToAnomaly((this.anomalyIndex - 1 + this.anomalies.length) % this.anomalies.length);
   }
 
   // ------------------------------------------------------------ document and track
@@ -96,6 +203,8 @@ export class FramesView {
     this.unsub?.();
     this.unsub = null;
     this.t = t;
+    this.anomalies = [];
+    this.anomalyIndex = -1;
     this.ft = t?.samples?.count && this.doc ? frameTypes(this.doc, t) : null;
     this.an = null;
     if (!keepView || !t?.samples) {
@@ -108,6 +217,7 @@ export class FramesView {
     if (this.ft) this.unsub = this.ft.onChange(() => this.queueRefresh());
     if (this.ft && this.order === 'display' && !this.displayKnown()) this.order = 'decode';
     this.render();
+    this.loadAnomalies();
     if (this.shown) this.onShow();
   }
 
@@ -194,7 +304,9 @@ export class FramesView {
       onclick: () => this.setTrack(v),
       'data-tip': `${v.label}\n${v.codecName}${v.samples?.count ? ` · ${fmtInt(v.samples.count)} frames` : ''}`,
     }, v.label))) : h('span', { class: 'ftrack', 'data-tip': `${t.codecName}` }, t.label);
-    this.el.append(h('div', { class: 'fhead' }, chips, seg, this.statusEl));
+    this.anomEl = h('div', { class: 'fanom-wrap' });
+    this.renderAnomalyNav();
+    this.el.append(h('div', { class: 'fhead' }, chips, seg, this.anomEl, this.statusEl));
 
     const body = h('div', { class: 'fbody' });
     if (mode === 'beginner') {
@@ -216,10 +328,12 @@ export class FramesView {
       legendItem('--ft-o', 0.9, 'other', 'Switch frames, repeated frames (=), or frames whose type is not known (?)'),
       h('span', { class: 'legend', 'data-tip': 'Key frame starting a closed GOP (IDR / key frame): decoding can start here cleanly' }, h('span', { class: 'mk' }, '▼'), 'key frame'),
       h('span', { class: 'legend', 'data-tip': 'Key frame starting an open GOP (CRA / recovery point): decoding can start here, but a few frames after it are skipped' }, h('span', { class: 'mk' }, '▽'), 'open GOP'),
-      h('span', { class: 'legend', 'data-tip': 'This packet also carries a hidden frame (VP9/AV1 alternate reference)' }, h('span', { class: 'mk' }, '○'), 'hidden frame'));
+      h('span', { class: 'legend', 'data-tip': 'This packet also carries a hidden frame (VP9/AV1 alternate reference)' }, h('span', { class: 'mk' }, '○'), 'hidden frame'),
+      h('span', { class: 'legend', 'data-tip': 'Critical anomaly: broken key frame, DTS inversion or container error' }, h('span', { style: 'color: var(--bad); font-weight: 700;' }, '✕'), 'critical anomaly'),
+      h('span', { class: 'legend', 'data-tip': 'Warning: timestamp discontinuity, uneven GOP cadence or A/V sync offset' }, h('span', { style: 'color: var(--warn); font-weight: 700;' }, '▲'), 'warning'));
     this.capTop = h('span', null, 'Frame sizes');
     body.append(h('div', { class: 'fchart' },
-      h('div', { class: 'cap' }, this.capTop, h('span', { class: 'hint' }, 'scroll to zoom · drag to move · double-click to see everything · click a frame to select it')),
+      h('div', { class: 'cap' }, this.capTop, h('span', { class: 'hint' }, 'scroll to zoom · drag to move · double-click to see everything · click a frame or anomaly to inspect')),
       legend, this.cvMain, h('div', { class: 'cap' }, this.capL, this.capM, this.capR), this.cvOver));
 
     this.gopEl = h('div', { class: 'fgop' });
@@ -256,6 +370,7 @@ export class FramesView {
     this.renderTiles();
     this.renderGop();
     this.renderTypes();
+    this.loadAnomalies();
     this.draw();
   }
 
@@ -472,6 +587,26 @@ export class FramesView {
     });
     cv.addEventListener('pointerup', (e) => {
       if (drag && !drag.moved) {
+        const r = cv.getBoundingClientRect();
+        const y = e.clientY - r.top;
+        if (y <= TOP && this.anomalies.length) {
+          const anIdx = this.anomalyAtX(e);
+          if (anIdx >= 0) {
+            this.jumpToAnomaly(anIdx);
+            drag = null;
+            return;
+          }
+        }
+        const al = this.audioLaneRect();
+        if (al && y >= al.top && y <= al.bottom) {
+          const a = this.audioTrack();
+          const aIdx = this.audioSampleAtX(e);
+          if (a && aIdx >= 0) {
+            this.app.selectSample(a, aIdx);
+            drag = null;
+            return;
+          }
+        }
         const k = this.frameAtX(e);
         if (k >= 0) this.app.selectSample(this.t, this.idxAt(k));
       }
@@ -529,7 +664,13 @@ export class FramesView {
   onKey(e) {
     const n = this.t.samples.count;
     const span = this.v1 - this.v0;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    if (e.key === 'n' || e.key === 'N') {
+      e.preventDefault();
+      this.nextAnomaly();
+    } else if (e.key === 'p' || e.key === 'P') {
+      e.preventDefault();
+      this.prevAnomaly();
+    } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       e.preventDefault();
       e.stopPropagation();
       const cur = this.selI >= 0 ? this.posOf(this.selI) : Math.floor(this.v0);
@@ -572,7 +713,105 @@ export class FramesView {
     return best;
   }
 
+  anomalyAtX(e) {
+    if (!this.anomalies.length || !this.t?.samples?.count) return -1;
+    const cv = this.cvMain;
+    const r = cv.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const w = cv.clientWidth;
+    const span = this.v1 - this.v0;
+    const colW = w / span;
+    const s = this.t.samples;
+    const ts = this.t.timescale || s.timescale || 1;
+    const a = Math.max(0, Math.floor(this.v0));
+    const z = Math.min(s.count - 1, Math.ceil(this.v1));
+    const t0 = ptsOf(s, this.idxAt(a)) / ts;
+    const t1 = ptsOf(s, this.idxAt(z)) / ts;
+    let best = -1;
+    let bestDist = 14;
+    for (let idx = 0; idx < this.anomalies.length; idx++) {
+      const an = this.anomalies[idx];
+      let ax;
+      if (an.sampleIndex >= 0) {
+        const k = this.posOf(an.sampleIndex);
+        ax = (k - this.v0) * colW + colW / 2;
+      } else {
+        ax = t1 > t0 ? ((an.time - t0) / (t1 - t0)) * w : -100;
+      }
+      const dist = Math.abs(x - ax);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = idx;
+      }
+    }
+    return best;
+  }
+
+  audioSampleAtX(e) {
+    const a = this.audioTrack();
+    if (!a?.samples?.count || !this.t?.samples?.count) return -1;
+    const as = a.samples;
+    const ats = a.timescale || as.timescale || 1;
+    const cv = this.cvMain;
+    const r = cv.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const w = cv.clientWidth;
+    const s = this.t.samples;
+    const ts = this.t.timescale || s.timescale || 1;
+    const a0 = Math.max(0, Math.floor(this.v0));
+    const z0 = Math.min(s.count - 1, Math.ceil(this.v1));
+    const t0 = ptsOf(s, this.idxAt(a0)) / ts;
+    const t1 = ptsOf(s, this.idxAt(z0)) / ts;
+    if (t1 <= t0) return -1;
+    const curT = t0 + (x / w) * (t1 - t0);
+    let lo = 0;
+    let hi = as.count - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (as.dts[mid] / ats <= curT) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  }
+
+  tipForAnomaly(an) {
+    const lines = [];
+    const icon = an.level === 'bad' ? '🔴 Critical' : an.level === 'warn' ? '🟡 Warning' : 'ℹ️ Note';
+    lines.push(`${icon}: ${an.title}`);
+    lines.push(`Category: ${an.category} · Time: ${fmtDuration(an.time, false)}${an.sampleIndex >= 0 ? ` · Frame #${an.sampleIndex + 1}` : ''}`);
+    if (an.offset != null) lines.push(`Byte offset: ${hex(an.offset, 1)}`);
+    if (an.text) lines.push('', an.text);
+    if (an.remedy?.fix) lines.push(`\nSuggested fix:\n${an.remedy.fix}`);
+    lines.push('\nClick to select frame and jump to bytes in hex view');
+    return lines.join('\n');
+  }
+
+  tipForAudioSample(a, i) {
+    const s = a.samples;
+    const ts = a.timescale || s.timescale || 1;
+    const t = s.dts[i] / ts;
+    return `Audio sample #${fmtInt(i + 1)} (${a.codecName ?? 'Audio'})\n${fmtInt(s.sizes[i])} bytes · shown at ${fmtDuration(t, false)}\nClick to inspect bytes`;
+  }
+
   onHover(e) {
+    const r = this.cvMain.getBoundingClientRect();
+    const y = e.clientY - r.top;
+    if (y <= TOP && this.anomalies.length) {
+      const anIdx = this.anomalyAtX(e);
+      if (anIdx >= 0) {
+        showTip(e.clientX, e.clientY, this.tipForAnomaly(this.anomalies[anIdx]));
+        return;
+      }
+    }
+    const al = this.audioLaneRect();
+    if (al && y >= al.top && y <= al.bottom) {
+      const a = this.audioTrack();
+      const aIdx = this.audioSampleAtX(e);
+      if (a && aIdx >= 0) {
+        showTip(e.clientX, e.clientY, this.tipForAudioSample(a, aIdx));
+        return;
+      }
+    }
     const k = this.frameAtX(e);
     if (k < 0) return;
     if (k !== this.hoverK) {
@@ -616,20 +855,26 @@ export class FramesView {
     const w = cv.clientWidth;
     if (!w) return;
     const dpr = window.devicePixelRatio || 1;
+    const mainH = this.mainHeight();
     cv.width = Math.round(w * dpr);
-    cv.height = Math.round(MAIN_H * dpr);
+    cv.height = Math.round(mainH * dpr);
+    cv.style.height = `${mainH}px`;
     const g = cv.getContext('2d');
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     const css = getComputedStyle(document.documentElement);
     const col = (n) => css.getPropertyValue(n).trim();
-    const colors = { '--ft-i': col('--ft-i'), '--ft-p': col('--ft-p'), '--ft-b': col('--ft-b'), '--ft-o': col('--ft-o') };
+    const colors = {
+      '--ft-i': col('--ft-i'), '--ft-p': col('--ft-p'), '--ft-b': col('--ft-b'), '--ft-o': col('--ft-o'),
+      '--bad': col('--bad') || '#f47067', '--warn': col('--warn') || '#e3b341', '--info': col('--info') || '#58a6ff',
+    };
     const t = this.t;
     const s = t.samples;
     const ft = this.ft;
     const n = s.count;
     const span = this.v1 - this.v0;
     const perPx = span / w;
-    const base = MAIN_H - 1;
+    const audioLane = this.audioLaneRect();
+    const base = audioLane ? audioLane.top - 4 : mainH - 1;
     const top = TOP;
     const a = Math.max(0, Math.floor(this.v0));
     const z = Math.min(n, Math.ceil(this.v1));
@@ -637,6 +882,7 @@ export class FramesView {
     for (let k = a; k < z; k++) max = Math.max(max, s.sizes[this.idxAt(k)]);
     const gops = this.an?.gops ?? [];
     const gopParity = (i) => this.gopOf(i) & 1;
+
     // GOP bands, recessive chrome and the size scale.
     g.fillStyle = col('--viz-grid');
     const band = col('--bg-2');
@@ -736,6 +982,94 @@ export class FramesView {
       }
     }
     g.globalAlpha = 1;
+
+    // Unified Anomaly Lane at top
+    if (this.anomalies.length) {
+      const colW = w / span;
+      const ts = t.timescale || s.timescale || 1;
+      const t0 = ptsOf(s, this.idxAt(a)) / ts;
+      const t1 = ptsOf(s, this.idxAt(Math.min(n - 1, z))) / ts;
+      for (let idx = 0; idx < this.anomalies.length; idx++) {
+        const an = this.anomalies[idx];
+        let ax;
+        if (an.sampleIndex >= 0) {
+          const k = this.posOf(an.sampleIndex);
+          ax = (k - this.v0) * colW + colW / 2;
+        } else {
+          ax = t1 > t0 ? ((an.time - t0) / (t1 - t0)) * w : -100;
+        }
+        if (ax < -10 || ax > w + 10) continue;
+        const color = an.level === 'bad' ? colors['--bad'] : an.level === 'warn' ? colors['--warn'] : colors['--info'];
+        g.fillStyle = color;
+        if (an.level === 'bad') {
+          g.beginPath();
+          g.moveTo(ax, 3);
+          g.lineTo(ax + 5, 9);
+          g.lineTo(ax, 15);
+          g.lineTo(ax - 5, 9);
+          g.closePath();
+          g.fill();
+        } else if (an.level === 'warn') {
+          tri(g, ax, 8, 4.5, true);
+        } else {
+          g.beginPath();
+          g.arc(ax, 9, 3.5, 0, Math.PI * 2);
+          g.fill();
+        }
+        if (idx === this.anomalyIndex) {
+          g.strokeStyle = col('--text') || '#fff';
+          g.lineWidth = 1.5;
+          g.beginPath();
+          g.arc(ax, 9, 7.5, 0, Math.PI * 2);
+          g.stroke();
+          g.lineWidth = 1;
+          g.strokeStyle = color;
+          g.setLineDash([2, 2]);
+          g.beginPath();
+          g.moveTo(ax, 16);
+          g.lineTo(ax, base);
+          g.stroke();
+          g.setLineDash([]);
+        }
+      }
+    }
+
+    // Synchronized Audio Lane if present
+    if (audioLane) {
+      const atrack = this.audioTrack();
+      const as = atrack?.samples;
+      const ats = atrack?.timescale || as?.timescale || 1;
+      const ts = t.timescale || s.timescale || 1;
+      const t0 = ptsOf(s, this.idxAt(a)) / ts;
+      const t1 = ptsOf(s, this.idxAt(Math.min(n - 1, z))) / ts;
+      const durSec = t1 - t0;
+      g.fillStyle = col('--line-2') || '#2a3644';
+      g.fillRect(0, audioLane.top, w, 1);
+      g.fillStyle = col('--viz-base') || '#38424f';
+      g.fillRect(0, audioLane.bottom, w, 1);
+      g.fillStyle = col('--text-3') || '#6c7a8b';
+      g.font = `9.5px ${col('--mono') || 'monospace'}`;
+      g.textAlign = 'left';
+      g.fillText(`AUDIO · ${atrack.codecName ?? 'AAC'}`, 6, audioLane.top + 10);
+
+      if (as?.count && durSec > 0) {
+        let maxAudioSize = 1;
+        for (let i = 0; i < as.count; i++) maxAudioSize = Math.max(maxAudioSize, as.sizes[i]);
+        const hRange = audioLane.height - 12;
+        for (let i = 0; i < as.count; i++) {
+          const at = as.dts[i] / ats;
+          const adur = (as.durations?.[i] ?? 1024) / ats;
+          if (at + adur < t0) continue;
+          if (at > t1) break;
+          const ax = ((at - t0) / durSec) * w;
+          const aw = Math.max(1, (adur / durSec) * w - 0.5);
+          const ah = Math.max(2, (as.sizes[i] / maxAudioSize) * hRange);
+          g.fillStyle = col('--c-track') || '#d0a8ff';
+          g.fillRect(ax, audioLane.bottom - ah, aw, ah);
+        }
+      }
+    }
+
     // Axis captions.
     const ts = t.timescale || s.timescale || 1;
     const first = this.idxAt(a);
@@ -788,6 +1122,17 @@ export class FramesView {
       g.fillRect(c, OVER_H - hgt, Math.max(1, w / n), hgt);
     }
     g.globalAlpha = 1;
+
+    // Anomaly ticks in overview bar
+    if (this.anomalies.length) {
+      for (const an of this.anomalies) {
+        const k = an.sampleIndex >= 0 ? this.posOf(an.sampleIndex) : Math.floor((an.time / (s.count / (frameRate(this.t) || 25))) * n);
+        const ax = (k / n) * w;
+        g.fillStyle = an.level === 'bad' ? (col('--bad') || '#f47067') : an.level === 'warn' ? (col('--warn') || '#e3b341') : (col('--info') || '#58a6ff');
+        g.fillRect(ax - 1, 0, 2, 4);
+      }
+    }
+
     // The zoomed window.
     const x0 = (this.v0 / n) * w;
     const x1 = (this.v1 / n) * w;

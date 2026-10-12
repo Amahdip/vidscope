@@ -504,3 +504,290 @@ export function framesAround(it, k, before = 12, after = 12) {
   for (let j = a; j < b; j++) out.push({ i: it.order[j], k: j });
   return out;
 }
+
+// ------------------------------------------------------------ semantic transcoding QA
+
+function audioStartTime(t) {
+  if (!t?.samples?.count) return null;
+  const ts = t.timescale || t.samples.timescale || 1;
+  const s = t.samples;
+  const first = s.pts ? s.pts[0] : s.dts ? s.dts[0] : 0;
+  return first / ts;
+}
+
+function videoStartTime(it) {
+  if (it?.start !== undefined && Number.isFinite(it.start)) return it.start;
+  const v = it?.video;
+  if (!v?.samples?.count) return null;
+  const ts = v.timescale || v.samples.timescale || 1;
+  const first = v.samples.pts ? v.samples.pts[0] : v.samples.dts ? v.samples.dts[0] : 0;
+  return first / ts;
+}
+
+function editListOffset(t) {
+  const elst = t?.node?.find?.('elst');
+  if (!elst?.data?.table?.count) return 0;
+  const tbl = elst.data.table;
+  const big = tbl.entrySize === 20;
+  const p = tbl.rel;
+  const media = big ? Number(tbl.dv.getBigInt64(p + 8)) : tbl.dv.getInt32(p + 4);
+  const ts = t.timescale || 1;
+  return media > 0 ? media / ts : 0;
+}
+
+function effectiveStart(t, rawStart) {
+  if (rawStart === null || rawStart === undefined) return null;
+  const el = editListOffset(t);
+  if (el > 0) return Math.max(0, rawStart - el);
+  return rawStart;
+}
+
+function avSkew(it) {
+  const vStart = videoStartTime(it);
+  const a = it?.audio?.[0];
+  const aStart = audioStartTime(a);
+  if (vStart === null || aStart === null) return null;
+  const vEff = effectiveStart(it?.video, vStart);
+  const aEff = effectiveStart(a, aStart);
+  return aEff - vEff;
+}
+
+/**
+ * Deep semantic conversion analysis comparing reference (source) and target (converted rendition).
+ * Detects stream processing modes (remux vs transcode), audio/video sync drift, dropped tracks,
+ * stripped color/HDR tags, broken GOP cadence, and generates actionable FFmpeg remedies.
+ */
+export function analyzeConversion(ref, it) {
+  const regressions = [];
+  const highlights = [];
+
+  const vCopy = copiedTrack(ref?.video, it?.video);
+  const aCopy = copiedTrack(ref?.audio?.[0], it?.audio?.[0]);
+
+  const videoMode = !ref?.video && !it?.video ? 'none'
+    : !ref?.video && it?.video ? 'added'
+    : ref?.video && !it?.video ? 'dropped'
+    : vCopy === true ? 'copied'
+    : 'transcoded';
+
+  const audioMode = !ref?.audio?.length && !it?.audio?.length ? 'none'
+    : !ref?.audio?.length && it?.audio?.length ? 'added'
+    : ref?.audio?.length && !it?.audio?.length ? 'dropped'
+    : aCopy === true ? 'copied'
+    : 'transcoded';
+
+  if (videoMode === 'dropped') {
+    regressions.push({
+      id: 'video-dropped',
+      severity: 'critical',
+      title: 'Video track dropped',
+      detail: 'The source video track was not preserved in the converted output.',
+      remedy: 'ffmpeg -i input -map 0:v ...',
+    });
+  }
+
+  if (audioMode === 'dropped') {
+    regressions.push({
+      id: 'audio-dropped',
+      severity: 'critical',
+      title: 'Audio track dropped',
+      detail: 'The source audio track was not preserved in the converted output.',
+      remedy: 'ffmpeg -i input -map 0:a ...',
+    });
+  }
+
+  // A/V Sync and priming drift
+  const refSkew = ref ? avSkew(ref) : null;
+  const itSkew = it ? avSkew(it) : null;
+  const syncShift = (refSkew !== null && itSkew !== null) ? itSkew - refSkew : null;
+  const syncShiftMs = syncShift !== null ? syncShift * 1000 : null;
+
+  if (syncShiftMs !== null) {
+    if (Math.abs(syncShiftMs) >= 50) {
+      regressions.push({
+        id: 'sync-drift',
+        severity: 'critical',
+        title: `Audio/Video sync shifted by ${syncShiftMs > 0 ? '+' : ''}${Math.round(syncShiftMs)} ms`,
+        detail: `Converted audio starts ${Math.round(Math.abs(syncShiftMs))} ms ${syncShiftMs > 0 ? 'later' : 'earlier'} relative to video than in the source. This typically occurs when audio priming/encoder delay is unhandled or container edit lists (edts) are stripped.`,
+        remedy: 'ffmpeg -i ... -af aresample=async=1 ... (or preserve edit lists with -movflags use_metadata_tags)',
+      });
+    } else if (Math.abs(syncShiftMs) >= 20) {
+      regressions.push({
+        id: 'sync-drift',
+        severity: 'warning',
+        title: `Audio/Video sync drifted by ${syncShiftMs > 0 ? '+' : ''}${Math.round(syncShiftMs)} ms`,
+        detail: `Minor audio timing offset introduced during conversion (${Math.round(Math.abs(syncShiftMs))} ms).`,
+        remedy: 'ffmpeg -i ... -af aresample=async=1',
+      });
+    }
+  }
+
+  // Dropped subtitle tracks
+  const refSubs = ref?.subs?.length ?? 0;
+  const itSubs = it?.subs?.length ?? 0;
+  if (refSubs > 0 && itSubs === 0) {
+    regressions.push({
+      id: 'subs-dropped',
+      severity: 'warning',
+      title: `Subtitle tracks dropped (${plural(refSubs, 'subtitle track')} lost)`,
+      detail: `Source has ${plural(refSubs, 'subtitle track')}, but none were preserved in the converted output. FFmpeg drops subtitles by default unless mapped explicitly.`,
+      remedy: 'ffmpeg -i input -map 0 -c:s mov_text (for MP4) or -c:s copy (for MKV)',
+    });
+  }
+
+  // Dropped audio tracks
+  const refAudios = ref?.audio?.length ?? 0;
+  const itAudios = it?.audio?.length ?? 0;
+  if (refAudios > 1 && itAudios < refAudios) {
+    regressions.push({
+      id: 'audio-tracks-dropped',
+      severity: 'warning',
+      title: `Alternate audio tracks dropped (${refAudios - itAudios} lost)`,
+      detail: `Source has ${refAudios} audio tracks, but converted file kept only ${itAudios}. FFmpeg selects only one audio track by default.`,
+      remedy: 'ffmpeg -i input -map 0:v -map 0:a -c:a aac',
+    });
+  }
+
+  // Multichannel audio downmix
+  const refCh = prop(ref?.audio?.[0], /^channels$/);
+  const itCh = prop(it?.audio?.[0], /^channels$/);
+  if (refCh && itCh && (/5\.1|6\b/.test(refCh)) && (/stereo|2\b/.test(itCh))) {
+    highlights.push('Audio downmixed from surround (5.1) to stereo (2 channels)');
+  }
+
+  // Color & HDR tags
+  const refCol = prop(ref?.video, /^colou?r$/);
+  const itCol = prop(it?.video, /^colou?r$/);
+  if (refCol && !/unspecified/i.test(refCol)) {
+    if (!itCol || /unspecified/i.test(itCol)) {
+      regressions.push({
+        id: 'color-stripped',
+        severity: 'critical',
+        title: 'Color metadata stripped in conversion',
+        detail: `Source has color configuration "${refCol}", but the converted video has no color tags. Players may render washed-out or inaccurate colors.`,
+        remedy: 'ffmpeg -i ... -color_primaries bt709 -color_trc bt709 -colorspace bt709',
+      });
+    } else if (/BT\.2020|PQ|HLG/i.test(refCol) && /BT\.709/i.test(itCol)) {
+      highlights.push('HDR video tonemapped to SDR (BT.709)');
+    }
+  }
+
+  // HDR mastering display
+  const refMaster = prop(ref?.video, /^mastering display$/);
+  const itMaster = prop(it?.video, /^mastering display$/);
+  if (refMaster && !itMaster && !itCol?.includes('BT.709')) {
+    regressions.push({
+      id: 'hdr-mastering-dropped',
+      severity: 'warning',
+      title: 'HDR mastering display metadata dropped',
+      detail: 'Mastering display metadata present in source was dropped in conversion.',
+      remedy: 'ffmpeg -i ... -c:v libx265 -x265-params mastering-display=...',
+    });
+  }
+
+  // Display rotation
+  const refRot = prop(ref?.video, /^rotation$/);
+  const itRot = prop(it?.video, /^rotation$/);
+  if (refRot && !itRot) {
+    if (ref?.size && it?.size && ref.size.width === it.size.height && ref.size.height === it.size.width) {
+      highlights.push('Orientation rotation baked into video pixel raster');
+    } else {
+      regressions.push({
+        id: 'rotation-lost',
+        severity: 'warning',
+        title: 'Display rotation tag dropped without rotating pixels',
+        detail: `Source had ${refRot} rotation tag; converted video dropped it without rotating the pixel dimensions.`,
+        remedy: 'ffmpeg -i ... -display_rotation ...',
+      });
+    }
+  }
+
+  // GOP and streaming readiness
+  if (videoMode === 'transcoded' && it?.frames?.gop) {
+    const g = it.frames.gop;
+    if (!g.fixed && g.count > 1) {
+      regressions.push({
+        id: 'variable-gop',
+        severity: 'warning',
+        title: `Variable GOP cadence (${fmtInt(g.minFrames)}–${fmtInt(g.maxFrames)} frames)`,
+        detail: 'Adaptive streaming (HLS/DASH) requires fixed GOP lengths across all renditions for seamless bitrate switching.',
+        remedy: `ffmpeg -i ... -g ${Math.round((it.fps || 25) * 2)} -keyint_min ${Math.round((it.fps || 25) * 2)} -sc_threshold 0`,
+      });
+    } else if (g.fixed) {
+      highlights.push(`Fixed GOP cadence (${fmtInt(g.minFrames)} frames, ${fmtNum(g.avgSeconds, 2)} s) ready for HLS/DASH chunking`);
+    }
+    if (g.open > 0) {
+      regressions.push({
+        id: 'open-gops',
+        severity: 'warning',
+        title: `Open GOPs detected (${plural(g.open, 'open GOP')})`,
+        detail: 'Open GOPs allow inter-prediction across keyframe boundaries, which can cause playback stalls or artifacts during HLS/DASH rendition switches.',
+        remedy: 'ffmpeg -i ... -flags +cgop',
+      });
+    }
+  }
+
+  // Fast Start for ISOBMFF
+  if (it?.doc?.format?.id === 'isobmff') {
+    const fs = fastStart(it.doc);
+    if (fs && fs.startsWith('no:')) {
+      regressions.push({
+        id: 'missing-faststart',
+        severity: 'warning',
+        title: 'Missing Fast Start (moov after mdat)',
+        detail: 'Web browsers and players cannot begin playback until the entire file finishes downloading.',
+        remedy: 'ffmpeg -i ... -movflags +faststart',
+      });
+    } else if (fs && fs.startsWith('yes:')) {
+      highlights.push('Fast start enabled (moov before mdat for instant web playback)');
+    }
+  }
+
+  // Savings highlights
+  if (ref?.doc?.size && it?.doc?.size) {
+    const sizeDiff = (it.doc.size - ref.doc.size) / ref.doc.size;
+    if (sizeDiff <= -0.05) {
+      highlights.push(`${fmtNum(Math.abs(sizeDiff) * 100, 1)}% file size reduction (${humanBytes(ref.doc.size)} → ${humanBytes(it.doc.size)})`);
+    }
+  }
+  if (ref?.rate?.avg && it?.rate?.avg) {
+    const rateDiff = (it.rate.avg - ref.rate.avg) / ref.rate.avg;
+    if (rateDiff <= -0.05) {
+      highlights.push(`${fmtNum(Math.abs(rateDiff) * 100, 1)}% video bitrate reduction (${fmtBitrate(ref.rate.avg)} → ${fmtBitrate(it.rate.avg)})`);
+    }
+  }
+
+  const criticals = regressions.filter((r) => r.severity === 'critical');
+  const warnings = regressions.filter((r) => r.severity === 'warning');
+
+  let verdict = 'clean-transcode';
+  let label = 'Clean transcode';
+
+  if (criticals.length > 0) {
+    verdict = 'regression';
+    label = `Regression detected (${criticals.length})`;
+  } else if (videoMode === 'copied' && (audioMode === 'copied' || !ref?.audio?.length)) {
+    if (warnings.length > 0) {
+      verdict = 'warning';
+      label = 'Remux with warnings';
+    } else {
+      verdict = 'clean-remux';
+      label = 'Clean stream copy (remux)';
+    }
+  } else if (warnings.length > 0) {
+    verdict = 'warning';
+    label = `Transcoded with warnings (${warnings.length})`;
+  }
+
+  return {
+    verdict,
+    label,
+    videoMode,
+    audioMode,
+    syncShiftMs,
+    regressions,
+    criticals,
+    warnings,
+    highlights,
+  };
+}

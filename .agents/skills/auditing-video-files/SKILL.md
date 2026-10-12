@@ -28,10 +28,18 @@ contract with `--expect k=v,...` or `--expect-file profile.json` (keys: `gop`, `
 `fpsMax`, `fpsMin`, `peakRatio`, `segments`, `colour`, `audio.*`, `loudness`, and an
 `overlay` of severities and level caps). A key the engine does not know is refused.
 
-## Measurements
+## Measurements and Transcoding QA
 
-`--measure` runs FFmpeg for loudness and true peak; with `--source <original>` also PSNR and
-SSIM. `--decode` decodes every frame with FFmpeg (single-threaded, reading the whole file) and
+`--source <original>` runs automated **Transcoding QA** comparing converted inputs against the source:
+- Checks stream processing mode (bitstream copy vs transcode).
+- Evaluates Audio/Video sync drift in milliseconds, flagging priming offsets and dropped edit lists.
+- Verifies preservation of subtitle tracks and alternate audio languages.
+- Detects stripped color characteristics and HDR metadata loss.
+- Checks GOP cadence and closed GOP structure for HLS/DASH chunking.
+- Appends actionable FFmpeg fixes to the report findings (exit code 2 for critical regressions).
+
+`--measure` runs FFmpeg for loudness (EBU R 128) and true peak; with `--source <original>` also PSNR and
+SSIM picture fidelity. `--decode` decodes every frame with FFmpeg (single-threaded, reading the whole file) and
 reports damaged frames with their time and byte offset. Without them those rules, and A/V
 sync, appear under "Not checked in this run": they were not measured, which is not the same
 as passing.
