@@ -18,6 +18,7 @@ import { fmtInt, fmtNum, fmtDuration, fmtBitrate, humanBytes, humanSize, plural 
 import {
   summarize, compareRows, changesFor, keyAlignment, segmentFit, sliceFor, bitsOverTime,
   frameAtTime, frameFacts, framesAround, contentStem, copiedTrack, fpsText, videoCodecName,
+  analyzeConversion,
 } from '../core/compare.js';
 
 const LANE_H = 46;
@@ -256,20 +257,67 @@ export class CompareView {
     const ref = items[0];
     items.forEach((it, k) => {
       if (!k || !it) return;
-      const card = h('div', { class: 'chgcard' }, h('div', { class: 'cch' }, h('b', { class: 'cn', title: it.name }, h('bdi', null, it.name))));
+      const qa = analyzeConversion(ref, it);
+      const card = h('div', { class: `chgcard${qa.verdict === 'regression' ? ' reg' : ''}` });
+      const top = h('div', { class: 'cch' },
+        h('b', { class: 'cn', title: it.name }, h('bdi', null, it.name)),
+        h('span', { class: `chip qa-verdict ${qa.verdict}`, 'data-tip': qa.verdict === 'clean-remux' ? 'Clean stream copy without re-encoding or metadata loss' : qa.verdict === 'clean-transcode' ? 'Transcoded cleanly with all tracks, color and sync preserved' : qa.verdict === 'regression' ? 'One or more critical conversion regressions detected' : 'Transcoded with conversion warnings' }, qa.label));
+      card.append(top);
+
+      // Stream status and A/V sync strip
+      const badges = h('div', { class: 'qa-strip' });
+      if (qa.videoMode === 'copied') badges.append(h('span', { class: 'qa-tag good', 'data-tip': 'Every video frame kept its exact size: copied bit-for-bit, not re-encoded.' }, '= video copied'));
+      else if (qa.videoMode === 'transcoded') badges.append(h('span', { class: 'qa-tag enc', 'data-tip': 'Video was decoded and re-encoded.' }, '≠ video re-encoded'));
+      else if (qa.videoMode === 'dropped') badges.append(h('span', { class: 'qa-tag bad', 'data-tip': 'The source video track was dropped.' }, '✕ video dropped'));
+
+      if (qa.audioMode === 'copied') badges.append(h('span', { class: 'qa-tag good', 'data-tip': 'Audio copied bit-for-bit, not re-encoded.' }, '= audio copied'));
+      else if (qa.audioMode === 'transcoded') badges.append(h('span', { class: 'qa-tag enc', 'data-tip': 'Audio was decoded and re-encoded.' }, '≠ audio re-encoded'));
+      else if (qa.audioMode === 'dropped') badges.append(h('span', { class: 'qa-tag bad', 'data-tip': 'The source audio track was dropped.' }, '✕ audio dropped'));
+
+      if (qa.syncShiftMs !== null) {
+        const ms = Math.round(qa.syncShiftMs);
+        const absMs = Math.abs(ms);
+        const cls = absMs >= 50 ? 'bad' : absMs >= 20 ? 'warn' : 'good';
+        badges.append(h('span', { class: `qa-tag ${cls}`, 'data-tip': 'Audio start offset relative to video compared to source. Drift >50 ms violates ITU-R BT.1359 and causes visible lip-sync lag.' }, absMs < 15 ? 'A/V sync: ±0 ms' : `A/V sync: ${ms > 0 ? '+' : ''}${ms} ms drift`));
+      }
+      card.append(badges);
+
       const list = h('ul', { class: 'chglist' });
-      const vCopy = copiedTrack(ref.video, it.video);
-      if (vCopy === true) list.append(h('li', { class: 'copy', 'data-tip': 'Every video frame has exactly the same size as in the reference: the video was copied (remuxed, -c:v copy), not encoded again. Its quality is identical.' }, h('b', null, '= video copied'), ' bit for bit, not re-encoded'));
-      else if (it.video && ref.video) list.append(h('li', { class: 'enc', 'data-tip': 'The frame sizes differ from the reference: the video was decoded and encoded again (transcoded). Every re-encode loses a little quality; this version\'s settings decide how much.' }, h('b', null, '≠ video re-encoded')));
-      const aCopy = copiedTrack(ref.audio[0], it.audio[0]);
-      if (aCopy === true) list.append(h('li', { class: 'copy', 'data-tip': 'The audio frames have the same sizes as in the reference: the audio was copied (-c:a copy).' }, h('b', null, '= audio copied')));
+
+      // Conversion regressions & warnings
+      if (qa.regressions.length) {
+        qa.regressions.forEach((r) => {
+          const isCrit = r.severity === 'critical';
+          const li = h('li', { class: isCrit ? 'lost' : 'warn' },
+            h('b', null, isCrit ? '✕ ' : '⚠ ', r.title),
+            r.detail ? h('div', { class: 'dim' }, r.detail) : null,
+            r.remedy ? h('div', { class: 'remedy', title: 'FFmpeg remedy' }, h('code', null, r.remedy)) : null);
+          list.append(li);
+        });
+      }
+
+      // Highlights
+      if (qa.highlights.length) {
+        qa.highlights.forEach((hi) => {
+          list.append(h('li', { class: 'copy' }, h('b', null, '✓ '), hi));
+        });
+      }
+
+      // Property changes from comparison rows
       const ch = changesFor(rows, 0, k);
       for (const c of ch) {
+        // Skip properties already reported by QA regressions to prevent duplication
+        if ((c.label === 'subtitles' && qa.regressions.some((r) => r.id === 'subs-dropped')) ||
+            (c.label === 'colour' && qa.regressions.some((r) => r.id === 'color-stripped')) ||
+            (c.label === 'fast start' && qa.regressions.some((r) => r.id === 'missing-faststart'))) {
+          continue;
+        }
         if (c.state === 'lost') list.append(h('li', { class: 'lost', 'data-tip': `The reference has ${c.label} "${c.from}"; this file has none.` }, h('b', null, `✕ ${c.label} lost`), h('span', { class: 'dim' }, ` (was ${c.from})`)));
         else if (c.state === 'gained') list.append(h('li', { class: 'gained', 'data-tip': `This file has ${c.label} that the reference does not.` }, h('b', null, `+ ${c.label}`), `: ${c.to}`));
         else list.append(h('li', null, h('b', null, c.label), ': ', h('span', { class: 'dim' }, c.from), ' → ', c.to, c.note ? h('span', { class: 'note2' }, ` (${c.note})`) : null));
       }
-      if (!ch.length) list.append(h('li', { class: 'dim' }, 'None of the main properties changed.'));
+
+      if (!list.children.length) list.append(h('li', { class: 'dim' }, 'None of the main properties changed.'));
       card.append(list);
       grid.append(card);
     });

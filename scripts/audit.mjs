@@ -13,7 +13,7 @@ import { openDocument } from '../web/formats/index.js';
 import { HttpSource } from '../web/core/source.js';
 import { NodeFileSource } from './node-source.mjs';
 import { auditFile, auditLadder, auditPlaylist, auditMarkdown, tally, allRules, SPECS, mergeExpect, validateExpect, buildReport, toSarif as sarifOf } from '../web/core/audit.js';
-import { contentStem } from '../web/core/compare.js';
+import { contentStem, summarize, analyzeConversion } from '../web/core/compare.js';
 import { measureHls, redact } from '../web/core/hls.js';
 import { audioStream, audioStreamFormat } from '../web/core/extract.js';
 
@@ -469,6 +469,17 @@ export async function auditInputs(o, log = () => {}) {
   const playlists = [];
   const later = []; // inputs whose loudness is measured once all are open
   let ffmpegMissing = false;
+  let sourceSummary = null;
+  let sourceDoc = null;
+  if (o.source) {
+    try {
+      const sSrc = await openInput(o.source, o);
+      sourceDoc = await openDocument(sSrc);
+      sourceSummary = await summarize(sourceDoc, { scan: false });
+    } catch (e) {
+      log(`could not open source ${o.source}: ${e.message}`);
+    }
+  }
   for (const [index, input] of o.inputs.entries()) {
     const t0 = Date.now();
     let src = null;
@@ -519,6 +530,37 @@ export async function auditInputs(o, log = () => {}) {
         log(`${input}: ${message}`);
         continue;
       }
+      if (sourceSummary && !res.unsupported) {
+        try {
+          const tgtSummary = await summarize(doc, { scan: false });
+          const conv = analyzeConversion(sourceSummary, tgtSummary);
+          res.conversion = conv;
+          res.facts.conversion = {
+            verdict: conv.verdict,
+            label: conv.label,
+            videoMode: conv.videoMode,
+            audioMode: conv.audioMode,
+            syncShiftMs: conv.syncShiftMs,
+            highlights: conv.highlights,
+          };
+          for (const reg of conv.regressions) {
+            res.checks.push({
+              id: reg.id,
+              category: 'Conversion',
+              severity: reg.severity === 'critical' ? 'CRITICAL' : 'WARNING',
+              level: reg.severity === 'critical' ? 'fail' : 'warn',
+              source: 'Transcoding QA',
+              clause: reg.title,
+              spec: 'practice',
+              title: reg.title,
+              text: reg.detail,
+              remedy: reg.remedy ? { fix: reg.remedy } : null,
+            });
+          }
+        } catch (e) {
+          log(`could not analyze conversion: ${e.message}`);
+        }
+      }
       res.input = input;
       res.ms = Date.now() - t0;
       res.facts.bytesRead = src.stats?.bytes ?? doc.source?.stats?.bytes ?? null;
@@ -555,6 +597,7 @@ export async function auditInputs(o, log = () => {}) {
       if (!o.ladder) log(`ladder: ${group.map((r) => r.file).join(' + ')}`);
     }
   }
+  if (sourceDoc?.source?.close) await sourceDoc.source.close().catch(() => {});
   return { results, ladders, playlists, ffmpegMissing };
 }
 

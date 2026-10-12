@@ -7,6 +7,7 @@ import { open, haveSample } from './helpers.mjs';
 import {
   summarize, compareRows, changesFor, keyAlignment, segmentFit, bitsOverTime, frameAtTime, frameFacts,
   framesAround, copiedTrack, contentStem, encoderSummary, niceFps, fpsText, audioCodecName,
+  analyzeConversion,
 } from '../web/core/compare.js';
 
 const LADDER = ['ladder-source.mkv', 'ladder-270p.mp4', 'ladder-180p.mp4', 'ladder-180p-gop40.mp4', 'ladder-remux.mp4'];
@@ -163,4 +164,83 @@ test('the frame each version shows at a moment', { skip: !haveLadder }, async ()
   let total = 0;
   for (let i = 0; i < it.video.samples.count; i++) total += it.video.samples.sizes[i] * 8;
   assert.equal(bits.reduce((a, b) => a + b, 0), total);
+});
+
+test('analyzeConversion: recognizes bitstream copy and flags dropped subtitles', { skip: !haveLadder }, async () => {
+  const L = await ladder();
+  const qa = analyzeConversion(L.source, L.remux);
+  assert.equal(qa.videoMode, 'copied');
+  assert.equal(qa.audioMode, 'copied');
+  assert.ok(Math.abs(qa.syncShiftMs) < 10, 'A/V sync preserved');
+  assert.ok(qa.warnings.some((w) => /subtitle/i.test(w.title)), 'warns about lost subtitle track');
+  assert.ok(qa.verdict === 'warning' || qa.verdict === 'clean-remux');
+});
+
+test('analyzeConversion: evaluates transcoding savings, channel downmix and fixed GOPs', { skip: !haveLadder }, async () => {
+  const L = await ladder();
+  const qa = analyzeConversion(L.source, L['270p']);
+  assert.equal(qa.videoMode, 'transcoded');
+  assert.equal(qa.audioMode, 'transcoded');
+  assert.ok(Math.abs(qa.syncShiftMs) < 15, 'A/V sync in tolerance');
+  assert.ok(qa.highlights.some((h) => /bitrate reduction/i.test(h) || /size reduction/i.test(h)));
+  assert.ok(qa.highlights.some((h) => /fixed GOP/i.test(h)));
+  assert.ok(qa.warnings.some((w) => /subtitle/i.test(w.title)));
+});
+
+test('analyzeConversion: flags critical A/V sync regression and provides remedy', () => {
+  const ref = {
+    doc: { size: 1000000, summary: { label: 'MP4' } },
+    video: { samples: { count: 100, sizes: [1000] } },
+    audio: [{ samples: { count: 100, sizes: [100], pts: [0], timescale: 1000 } }],
+    subs: [],
+    start: 0,
+    times: [0],
+  };
+  const target = {
+    doc: { size: 500000, summary: { label: 'MP4' }, format: { id: 'isobmff' }, root: { children: [{ type: 'moov' }, { type: 'mdat' }] } },
+    video: { samples: { count: 100, sizes: [500] } },
+    // Audio starts 80ms late relative to video
+    audio: [{ samples: { count: 100, sizes: [50], pts: [80], timescale: 1000 } }],
+    subs: [],
+    start: 0,
+    times: [0],
+  };
+  const qa = analyzeConversion(ref, target);
+  assert.equal(qa.verdict, 'regression');
+  assert.equal(Math.round(qa.syncShiftMs), 80);
+  const syncCrit = qa.regressions.find((r) => /sync/i.test(r.title));
+  assert.ok(syncCrit, 'critical sync regression detected');
+  assert.equal(syncCrit.severity, 'critical');
+  assert.match(syncCrit.remedy, /-af aresample=async=1/);
+});
+
+test('analyzeConversion: flags stripped color metadata and provides remedy', () => {
+  const ref = {
+    doc: { size: 1000000, summary: { label: 'MP4' } },
+    video: {
+      samples: { count: 100, sizes: [1000] },
+      props: [['colour', 'BT.709, full range']],
+    },
+    audio: [],
+    subs: [],
+    start: 0,
+    times: [0],
+  };
+  const target = {
+    doc: { size: 500000, summary: { label: 'MP4' }, format: { id: 'isobmff' }, root: { children: [{ type: 'moov' }, { type: 'mdat' }] } },
+    video: {
+      samples: { count: 100, sizes: [500] },
+      props: [], // stripped
+    },
+    audio: [],
+    subs: [],
+    start: 0,
+    times: [0],
+  };
+  const qa = analyzeConversion(ref, target);
+  assert.equal(qa.verdict, 'regression');
+  const colCrit = qa.regressions.find((r) => /colo/i.test(r.title));
+  assert.ok(colCrit, 'stripped color regression detected');
+  assert.equal(colCrit.severity, 'critical');
+  assert.match(colCrit.remedy, /-color_primaries/);
 });

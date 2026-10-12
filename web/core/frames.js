@@ -574,3 +574,185 @@ function typeInsights(doc, t, ft, an, out) {
     out.push({ level: 'info', group: 'Integrity', title: `${t.label}: ${plural(an.rapNotKey.length, 'IDR frame')} not marked as key frame${an.rapNotKey.length === 1 ? '' : 's'}`, text: `${an.rapNotKey.length === 1 ? 'This frame is' : 'These frames are'} self-contained entry points in the bitstream, but the container does not list them as key frames, so players will not seek to them. First one: frame ${fmtInt(i + 1)}.`, offset: s.offsets[i] });
   }
 }
+
+/**
+ * Collect anomalies across video frames, audio tracks, container warnings and audit findings.
+ * Each anomaly is:
+ * { id, level: 'bad'|'warn'|'info', category, title, text, time, sampleIndex, offset, remedy?, spec?, clause? }
+ */
+export async function timelineAnomalies(doc, videoTrack, { auditChecks = null } = {}) {
+  const list = [];
+  if (!doc || !videoTrack?.samples?.count) return list;
+  const s = videoTrack.samples;
+  const ts = videoTrack.timescale || s.timescale || 1;
+  const { order } = displayOrder(videoTrack);
+  const ft = frameTypes(doc, videoTrack);
+  const an = analyzeFrames(ft);
+
+  // 1. Key frame & bitstream entry point mismatches
+  for (const i of an.keyNotRap) {
+    const t = ptsOf(s, i) / ts;
+    list.push({
+      id: `key-not-rap-${i}`,
+      level: 'bad',
+      category: 'Key frame',
+      title: `Key frame #${i + 1} is not a random access point`,
+      text: `The container index marks frame ${i + 1} as a key frame, but its bitstream header is an inter-frame. Seeking here or cutting a segment here causes corruption until the next key frame.`,
+      time: t,
+      sampleIndex: i,
+      offset: s.offsets[i],
+    });
+  }
+  for (const i of an.rapNotKey) {
+    const t = ptsOf(s, i) / ts;
+    list.push({
+      id: `rap-not-key-${i}`,
+      level: 'info',
+      category: 'Key frame',
+      title: `IDR frame #${i + 1} not indexed as key frame`,
+      text: `Frame ${i + 1} is a self-contained IDR picture in the bitstream, but the container table does not mark it as a key frame, so players will not seek to it.`,
+      time: t,
+      sampleIndex: i,
+      offset: s.offsets[i],
+    });
+  }
+
+  // 2. Timing discontinuities & non-monotonic DTS
+  for (let i = 1; i < s.count; i++) {
+    if (s.dts[i] < s.dts[i - 1]) {
+      const t = ptsOf(s, i) / ts;
+      list.push({
+        id: `dts-non-monotonic-${i}`,
+        level: 'bad',
+        category: 'Timing',
+        title: `Non-monotonic decode timestamp (DTS) at frame #${i + 1}`,
+        text: `DTS goes backwards from ${s.dts[i - 1]} to ${s.dts[i]}. Decoders fail or desynchronize on backward timestamps.`,
+        time: t,
+        sampleIndex: i,
+        offset: s.offsets[i],
+      });
+    }
+  }
+
+  // Large presentation time gaps between adjacent displayed frames
+  if (s.count > 2) {
+    const totalSec = trackSeconds(videoTrack, 0, s.count);
+    const avgDur = totalSec / s.count;
+    if (avgDur > 0) {
+      for (let k = 1; k < order.length; k++) {
+        const prevIdx = order[k - 1];
+        const curIdx = order[k];
+        const tPrev = ptsOf(s, prevIdx) / ts;
+        const tCur = ptsOf(s, curIdx) / ts;
+        const gap = tCur - tPrev;
+        if (gap > Math.max(0.1, 2.5 * avgDur)) {
+          list.push({
+            id: `pts-gap-${curIdx}`,
+            level: 'warn',
+            category: 'Timing',
+            title: `Timestamp gap of ${fmtNum(gap, 3)} s before frame #${curIdx + 1}`,
+            text: `A timestamp jump of ${fmtNum(gap, 3)} s (expected ~${fmtNum(avgDur, 3)} s) indicates dropped frames or a clock discontinuity.`,
+            time: tPrev,
+            sampleIndex: curIdx,
+            offset: s.offsets[curIdx],
+          });
+        }
+      }
+    }
+  }
+
+  // 3. Audio / Video sync and audio gaps
+  const audioTracks = doc.tracks.filter((t) => t.kind === 'audio' && t.samples?.count);
+  for (const a of audioTracks) {
+    const as = a.samples;
+    const ats = a.timescale || as.timescale || 1;
+    const vStart = ptsOf(s, order[0]) / ts;
+    const aStart = as.dts[0] / ats;
+    const drift = aStart - vStart;
+    if (Math.abs(drift) > 0.045) {
+      list.push({
+        id: `av-sync-${a.id ?? 'audio'}`,
+        level: 'warn',
+        category: 'Audio sync',
+        title: `A/V start sync offset: audio ${drift > 0 ? 'late by' : 'early by'} ${Math.abs(Math.round(drift * 1000))} ms`,
+        text: `Audio presentation starts ${Math.abs(Math.round(drift * 1000))} ms ${drift > 0 ? 'after' : 'before'} video (ITU-R BT.1359 threshold is +45 ms / -125 ms). Conversions may lose or mishandle priming delay.`,
+        time: Math.min(vStart, aStart),
+        sampleIndex: 0,
+        offset: as.offsets[0],
+      });
+    }
+
+    // Check for audio stream timestamp gaps
+    const checkLimit = Math.min(as.count, 20000);
+    for (let k = 1; k < checkLimit; k++) {
+      const prevEnd = as.dts[k - 1] + (as.durations?.[k - 1] ?? 0);
+      const gap = (as.dts[k] - prevEnd) / ats;
+      if (gap > 0.035) {
+        list.push({
+          id: `audio-gap-${k}`,
+          level: 'warn',
+          category: 'Audio sync',
+          title: `Audio timestamp gap of ${Math.round(gap * 1000)} ms at sample #${k + 1}`,
+          text: `Gap in audio track timestamps; listeners will hear a glitch or click.`,
+          time: as.dts[k] / ats,
+          sampleIndex: -1,
+          offset: as.offsets[k],
+        });
+      }
+    }
+  }
+
+  // 4. Container warnings on doc
+  for (let wi = 0; wi < (doc.warnings ?? []).length; wi++) {
+    const w = doc.warnings[wi];
+    if (w.offset !== undefined) {
+      let bestI = 0;
+      for (let i = 0; i < s.count; i++) {
+        if (s.offsets[i] <= w.offset) bestI = i;
+        else break;
+      }
+      list.push({
+        id: `container-warning-${wi}`,
+        level: 'bad',
+        category: 'Integrity',
+        title: `Container warning: ${w.msg ?? 'structural error'}`,
+        text: w.msg ?? 'Container structural issue detected at this byte position.',
+        time: ptsOf(s, bestI) / ts,
+        sampleIndex: bestI,
+        offset: w.offset,
+      });
+    }
+  }
+
+  // 5. Audit checks if provided
+  for (const c of auditChecks ?? []) {
+    if (c.level === 'fail' || c.level === 'warn') {
+      let t = 0;
+      let sampleIndex = 0;
+      if (c.offset !== undefined) {
+        for (let i = 0; i < s.count; i++) {
+          if (s.offsets[i] <= c.offset) sampleIndex = i;
+          else break;
+        }
+        t = ptsOf(s, sampleIndex) / ts;
+      }
+      list.push({
+        id: `audit-${c.id}`,
+        level: c.level === 'fail' ? 'bad' : 'warn',
+        category: c.category ?? 'Audit',
+        title: c.title,
+        text: c.text,
+        time: t,
+        sampleIndex,
+        offset: c.offset ?? s.offsets[0],
+        remedy: c.remedy,
+        spec: c.spec,
+        clause: c.clause,
+      });
+    }
+  }
+
+  list.sort((a, b) => a.time - b.time || a.sampleIndex - b.sampleIndex);
+  return list;
+}
+
