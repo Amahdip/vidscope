@@ -3,6 +3,14 @@
 Notable changes to Vidscope. There are no tagged releases yet; `main` is the current version.
 Each entry links to the pull request with the details.
 
+## 2026-10-13
+
+### Added
+- Full browser history navigation: browser Back and Forward buttons seamlessly navigate between
+  viewed files, center tabs (`Bytes`, `Frames`, `Bitrate`, `Audit`), Compare mode, conversion checks,
+  and inspected byte offsets via `popstate` and `pushState`. Navigating within an already opened file
+  switches views instantly without re-parsing.
+
 ## 2026-10-12
 
 ### Added

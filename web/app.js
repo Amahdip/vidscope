@@ -50,6 +50,7 @@ let selSeq = 0;
 let localCount = 0;
 let remoteCount = 0;
 let checkSeq = 0;
+let historyNavDepth = 0;
 
 /** Byte range a field hit covers (a single cell for table entries). */
 export function hitRange(hit) {
@@ -155,7 +156,7 @@ const app = {
    * Open a file in the byte viewer. `doc` is an already opened document of it (from the
    * comparison), with its frames indexed.
    */
-  async openEntry(entry, { hash, doc: opened = null } = {}) {
+  async openEntry(entry, { hash, doc: opened = null, push = true } = {}) {
     const my = ++openSeq;
     selSeq++; // a selection still being resolved belongs to the previous file
     hideTip();
@@ -178,7 +179,7 @@ const app = {
       setTipFileSize(doc.size);
       store.set({ doc, loading: null, level: doc.root, sel: null, samplesReady: !doc.loadSamples || !!opened, docVersion: 0 });
       document.title = `${entry.name} — Vidscope`;
-      this.updateUrl(entry);
+      this.updateUrl(entry, { push });
       if (doc.loadSamples && !opened) {
         doc.loadSamples((done, total) => {
           if (my === openSeq) store.set({ loading: { name: entry.name, done, total, phase: 'indexing frames' } });
@@ -202,50 +203,86 @@ const app = {
     }
   },
 
-  updateUrl(entry = store.get().current) {
+  updateUrl(entry = store.get().current, { push = false } = {}) {
+    if (historyNavDepth > 0) push = false;
+    const s = store.get();
     const url = new URL(location.href);
     if (entry?.kind === 'server') url.searchParams.set('file', entry.id);
     else url.searchParams.delete('file');
+
+    const tab = s.centerTab;
+    if (entry && tab && tab !== 'bytes' && !s.compare && !s.report) {
+      url.searchParams.set('tab', tab);
+    } else {
+      url.searchParams.delete('tab');
+    }
+
     // A comparison of files from the server can be bookmarked: ?compare=3,4,5&ref=3
-    const cmp = store.get().compare;
-    const ids = (cmp?.keys ?? []).map((k) => store.get().files.find((f) => f.key === k)).filter((f) => f?.kind === 'server').map((f) => f.id);
+    const cmp = s.compare;
+    const ids = (cmp?.keys ?? []).map((k) => s.files.find((f) => f.key === k)).filter((f) => f?.kind === 'server').map((f) => f.id);
     if (cmp && ids.length) {
       url.searchParams.set('compare', ids.join(','));
-      const ref = store.get().files.find((f) => f.key === cmp.ref);
+      const ref = s.files.find((f) => f.key === cmp.ref);
       if (ref?.kind === 'server') url.searchParams.set('ref', ref.id);
       else url.searchParams.delete('ref');
+      url.searchParams.delete('tab');
     } else {
       url.searchParams.delete('compare');
       url.searchParams.delete('ref');
     }
     // A conversion check can be shared: ?check=12345678&profile=policy runs it again.
-    const rep = store.get().report;
+    const rep = s.report;
     if (rep?.query && !cmp) {
       url.searchParams.set('check', rep.query);
       if (rep.profile) url.searchParams.set('profile', rep.profile);
       url.searchParams.delete('file');
+      url.searchParams.delete('tab');
     } else {
       url.searchParams.delete('check');
       url.searchParams.delete('profile');
     }
-    history.replaceState(null, '', url.toString().replace(/%2C/g, ','));
+
+    if (!entry && !cmp && !rep) {
+      url.search = '';
+      url.hash = '';
+    }
+
+    const state = {
+      fileKey: entry?.key ?? null,
+      fileId: entry?.kind === 'server' ? entry.id : null,
+      fileKind: entry?.kind ?? null,
+      tab: s.centerTab ?? 'bytes',
+      compareKeys: cmp?.keys ?? null,
+      compareRef: cmp?.ref ?? null,
+      checkQuery: rep?.query ?? null,
+      checkProfile: rep?.profile ?? null,
+    };
+
+    const finalUrl = url.toString().replace(/%2C/g, ',');
+    const currentFullUrl = location.href;
+
+    if (push && finalUrl !== currentFullUrl) {
+      history.pushState(state, '', finalUrl);
+    } else {
+      history.replaceState(state, '', finalUrl);
+    }
   },
 
   // ------------------------------------------------------------ comparing versions
 
   /** Compare files (keys of store.files) with the reference `ref`. */
-  openCompare(keys, ref = keys[0]) {
+  openCompare(keys, ref = keys[0], { push = true } = {}) {
     hideTip();
     store.set({ compare: { keys, ref: keys.includes(ref) ? ref : keys[0] }, lastCompare: null });
     document.title = 'Compare versions — Vidscope';
-    this.updateUrl();
+    this.updateUrl(null, { push });
   },
 
   /**
    * Back to the start page: the open file, comparison and report close (the comparison and a
    * finished report stay one click away, as when they are closed on their own).
    */
-  goHome() {
+  goHome({ push = true } = {}) {
     openSeq++;
     selSeq++;
     checkSeq++;
@@ -258,22 +295,22 @@ const app = {
       report: null, lastReport: s.report?.status === 'done' ? s.report : s.lastReport,
     });
     document.title = 'Vidscope';
-    this.updateUrl(null);
+    this.updateUrl(null, { push });
     this.pushHash(null);
   },
 
-  closeCompare() {
+  closeCompare({ push = true } = {}) {
     const cmp = store.get().compare;
     if (!cmp) return;
     store.set({ compare: null, lastCompare: cmp });
     document.title = store.get().current ? `${store.get().current.name} — Vidscope` : 'Vidscope';
-    this.updateUrl();
+    this.updateUrl(store.get().current, { push });
   },
 
   /** Back to the comparison that was left to inspect a file. */
   backToCompare() {
     const cmp = store.get().lastCompare;
-    if (cmp) this.openCompare(cmp.keys, cmp.ref);
+    if (cmp) this.openCompare(cmp.keys, cmp.ref, { push: true });
   },
 
   pickCompare() {
@@ -293,23 +330,23 @@ const app = {
   },
 
   /** Show the conversion check page, empty or with a query to run. */
-  showReport(query = '', profile = null) {
+  showReport(query = '', profile = null, { push = true } = {}) {
     hideTip();
     if (query) {
-      this.runCheck(query, profile ?? store.get().auditServer?.defaultProfile ?? 'policy');
+      this.runCheck(query, profile ?? store.get().auditServer?.defaultProfile ?? 'policy', { push });
       return;
     }
     store.set({ report: { query: '', profile, status: 'empty' }, compare: null });
     document.title = 'Check a conversion — Vidscope';
-    this.updateUrl();
+    this.updateUrl(null, { push });
   },
 
   /** Run a conversion check; `decode` also decodes every frame of every rendition (slower). */
-  async runCheck(query, profile = store.get().auditServer?.defaultProfile ?? 'policy', { decode = false } = {}) {
+  async runCheck(query, profile = store.get().auditServer?.defaultProfile ?? 'policy', { decode = false, push = true } = {}) {
     const my = ++checkSeq;
     store.set({ report: { query, profile, decode, status: 'loading', started: Date.now() }, compare: null });
     document.title = `Checking ${query} — Vidscope`;
-    this.updateUrl();
+    this.updateUrl(null, { push });
     try {
       const res = await fetch(`api/audit/check?q=${encodeURIComponent(query)}&profile=${encodeURIComponent(profile)}${decode ? '&decode=1' : ''}`);
       const body = await res.json().catch(() => ({}));
@@ -323,19 +360,19 @@ const app = {
     }
   },
 
-  closeReport() {
+  closeReport({ push = true } = {}) {
     const rep = store.get().report;
     checkSeq++;
     store.set({ report: null, lastReport: rep?.status === 'done' ? rep : store.get().lastReport });
     document.title = store.get().current ? `${store.get().current.name} — Vidscope` : 'Vidscope';
-    this.updateUrl();
+    this.updateUrl(store.get().current, { push });
   },
 
   backToReport() {
     const rep = store.get().lastReport;
     if (!rep) return;
     store.set({ report: rep, compare: null });
-    this.updateUrl();
+    this.updateUrl(null, { push: true });
   },
 
   checkLink(query, profile) {
@@ -384,9 +421,9 @@ const app = {
   /** Leave the comparison to look at one of its files (and one of its frames) in the byte viewer. */
   async inspectCompared(entry, doc, { track = null, sample = null } = {}) {
     if (!entry) return;
-    await this.openEntry(entry, { doc });
+    if (track && sample !== null) store.set({ centerTab: 'frames' });
+    await this.openEntry(entry, { doc, push: true });
     if (track && sample !== null) {
-      store.set({ centerTab: 'frames' });
       await this.selectSample(track, sample);
     }
   },
@@ -394,7 +431,7 @@ const app = {
   pushHash(offset) {
     const url = new URL(location.href);
     url.hash = offset === null || offset === undefined ? '' : hex(offset, 1).toLowerCase();
-    history.replaceState(null, '', url);
+    history.replaceState(history.state, '', url);
   },
 
   // ------------------------------------------------------------ selection
@@ -700,7 +737,12 @@ async function boot() {
     if (changed.has('theme')) applyTheme(s.theme);
     if (changed.has('mode')) applyMode(s.mode);
     if (changed.has('leftTab')) savePref('leftTab', s.leftTab);
-    if (changed.has('centerTab')) savePref('centerTab', s.centerTab);
+    if (changed.has('centerTab')) {
+      savePref('centerTab', s.centerTab);
+      if (historyNavDepth === 0 && s.current && s.doc && !s.compare && !s.report) {
+        app.updateUrl(s.current, { push: true });
+      }
+    }
     const empty = !s.doc;
     const reporting = !!s.report && !s.compare;
     const el = document.getElementById('app');
@@ -728,22 +770,133 @@ async function boot() {
   installKeys();
   installSplitters();
 
+  async function handlePopState(e) {
+    historyNavDepth++;
+    try {
+      app.topbar?.closeMenu();
+      document.querySelector('.help.cmppick')?.remove();
+
+      const url = new URL(location.href);
+      const params = url.searchParams;
+      const s = store.get();
+
+      if (!s.files.length) await app.loadServerFiles();
+      const files = store.get().files;
+
+      const checkQuery = params.get('check') || e.state?.checkQuery;
+      const checkProfile = params.get('profile') || e.state?.checkProfile;
+      if (checkQuery && store.get().auditServer) {
+        if (s.report?.query === checkQuery && s.report?.profile === checkProfile && !s.compare) {
+          return;
+        }
+        app.showReport(checkQuery, checkProfile, { push: false });
+        return;
+      }
+
+      const compareParam = params.get('compare');
+      const compareKeys = e.state?.compareKeys;
+      if (compareParam || (compareKeys && compareKeys.length)) {
+        const byId = (id) => files.find((f) => f.kind === 'server' && String(f.id) === id);
+        const byKey = (key) => files.find((f) => f.key === key);
+        let keys = [];
+        let refKey = null;
+
+        if (compareParam) {
+          const cmpFiles = compareParam.split(',').map(byId).filter(Boolean);
+          keys = cmpFiles.map((f) => f.key);
+          const refId = params.get('ref');
+          refKey = (refId ? byId(refId) : null)?.key ?? keys[0];
+        } else if (compareKeys) {
+          keys = compareKeys.filter(byKey);
+          refKey = e.state?.compareRef && byKey(e.state.compareRef) ? e.state.compareRef : keys[0];
+        }
+
+        if (keys.length) {
+          if (s.compare && s.compare.keys.join(',') === keys.join(',') && s.compare.ref === refKey) {
+            return;
+          }
+          app.openCompare(keys, refKey, { push: false });
+          return;
+        }
+      }
+
+      if (s.compare) {
+        store.set({ compare: null, lastCompare: s.compare });
+      }
+      if (s.report) {
+        store.set({ report: null, lastReport: s.report.status === 'done' ? s.report : s.lastReport });
+      }
+
+      const fileParam = params.get('file');
+      const fileKey = e.state?.fileKey;
+      const fileId = e.state?.fileId;
+
+      let targetEntry = null;
+      if (fileParam) {
+        targetEntry = files.find((f) => f.kind === 'server' && String(f.id) === fileParam);
+      }
+      if (!targetEntry && fileKey) {
+        targetEntry = files.find((f) => f.key === fileKey);
+      }
+      if (!targetEntry && fileId !== null && fileId !== undefined) {
+        targetEntry = files.find((f) => f.kind === 'server' && String(f.id) === String(fileId));
+      }
+
+      const tabParam = params.get('tab') || e.state?.tab || 'bytes';
+      const targetHash = url.hash;
+
+      if (targetEntry) {
+        if (s.current?.key === targetEntry.key && s.doc) {
+          if (s.centerTab !== tabParam) {
+            store.set({ centerTab: tabParam });
+          }
+          const off = targetHash ? parseOffset(targetHash.replace(/^#/, '').replace(/^off=/, ''), s.doc.size) : null;
+          if (off !== null && s.sel?.offset !== off) {
+            await app.selectByte(off, { from: 'url' });
+          } else if (!targetHash && s.sel?.offset !== null) {
+            app.select(s.doc.root, { from: 'tree' });
+          }
+          document.title = `${targetEntry.name} — Vidscope`;
+        } else {
+          if (s.centerTab !== tabParam) {
+            store.set({ centerTab: tabParam });
+          }
+          await app.openEntry(targetEntry, { hash: targetHash, push: false });
+        }
+        return;
+      }
+
+      if (s.current || s.doc || s.compare || s.report) {
+        app.goHome({ push: false });
+      }
+    } finally {
+      historyNavDepth--;
+    }
+  }
+
+  window.addEventListener('popstate', handlePopState);
+
   await Promise.all([app.loadServerFiles(), app.loadAuditServer()]);
   const files = store.get().files;
   const params = new URL(location.href).searchParams;
+  const tab = params.get('tab');
+  if (tab && ['bytes', 'frames', 'bitrate', 'audit'].includes(tab)) {
+    store.set({ centerTab: tab });
+  }
   if (params.get('check') && store.get().auditServer) {
-    app.showReport(params.get('check'), params.get('profile'));
+    app.showReport(params.get('check'), params.get('profile'), { push: false });
     return;
   }
   const byId = (id) => files.find((f) => f.kind === 'server' && String(f.id) === id);
   const cmp = (params.get('compare') ?? '').split(',').map(byId).filter(Boolean);
   if (cmp.length) {
-    app.openCompare(cmp.map((f) => f.key), byId(params.get('ref') ?? '')?.key ?? cmp[0].key);
+    app.openCompare(cmp.map((f) => f.key), byId(params.get('ref') ?? '')?.key ?? cmp[0].key, { push: false });
     return;
   }
   const want = params.get('file');
   const entry = byId(want) ?? (want === null ? files[0] : null);
-  if (entry) await app.openEntry(entry);
+  if (entry) await app.openEntry(entry, { push: false });
+  else app.updateUrl(null, { push: false });
 }
 
 boot();
